@@ -25,6 +25,9 @@ class HandChecker:
     def __str__(self):
         return str([f'{suit} of {color}' for suit, color in self.hand])
 
+    def status_repr(self):
+        return '\n'.join([f'{stat} -> {self.status[stat]}' for stat in self.status])
+
 
     def _get_hand_status(self):
         # set high cards
@@ -34,20 +37,21 @@ class HandChecker:
         from_count_to_hand = {2 : 'One Pair', 3 : 'Three of a Kind', 4 : 'Four of a Kind'}
         # count repetitions, number of one pairs and number of two pairs in that order
         counters = [1,0,0]
-        for i in range(1, len(self.hand))[::-1]:
+        for i in range(1, len(self.hand))[::-1]: # it's reversed so it can skip low vlue pairs if there are too many
             if self.hand[i - 1][0] == self.hand[i][0]:
                 counters[0] += 1
-            else:
+            if self.hand[i - 1][0] != self.hand[i][0] or i == 1:
+                i = 0 if i == 1 else i # if i = 1 this if block executes in the same loop as the previous one
                 if not (counters[0] == 2 and counters[1] >= 1 or counters[0] == 3 and counters[2] >= 1 or counters[0] == 1):
                     self.status[from_count_to_hand[counters[0]]].append(self.hand[i: i + counters[0]])
-                elif counters[0] == 2 and counters[1] == 2:
+                elif counters[0] == 2 and counters[1] == 1:
                     self.status['Two Pairs'] = self.status['One Pair'] + self.hand[i: i + counters[0]]
                     self.status['One Pair'] = []
                 elif counters[0] == 3 and counters[2] == 1:
                     self.status['Full House'] = self.status['Three of a Kind'] + self.hand[i: i + counters[0] - 1]
 
-                counters[1] += 1 if counters[0] == 3 else 0
-                counters[2] += 1 if counters[0] == 2 else 0
+                counters[2] += 1 if counters[0] == 3 else 0
+                counters[1] += 1 if counters[0] == 2 else 0
                 counters[0] = 1
 
         if self.status['One Pair'] and self.status['Three of a Kind']:
@@ -110,6 +114,19 @@ def random_hand():
     _hand = [_cards.pop(randint(0, len(_cards) - 1)) for _ in range(7)]
     return _hand
 
-c = HandChecker(random_hand())
-print(c)
-print(c.highest_hand)
+l = []
+for i in range(10000):
+    r = random_hand()
+    a = HandChecker(r)
+    l.append(a.highest_hand)
+
+for elt in set(l):
+    print(elt, l.count(elt))
+
+'''
+while True:
+    input()
+    c = HandChecker(random_hand())
+    print(c)
+    print(c.status_repr())
+'''

@@ -9,8 +9,8 @@ CARDS = [f'{suit} of {color}' for color in COLORS for suit in SUITS]
 class HandParser:
 
     def __init__(self, hand):
-        if not self.is_valid_hand(hand):
-            raise ValueError('Hand is invalid')
+        # AssertionError if hand is not valid
+        assert len(hand) == len(set(hand)) == 7 and not [card for card in hand if card not in CARDS]
 
         # hand is always represented by [[suit, color], [suit, color], ..., [suit, color]]
         self.hand = self.sort_cards(self.split_cards(hand))
@@ -19,15 +19,58 @@ class HandParser:
         # [] changes to the higher five cards that represent hand
         self.status = {_hand: [] for _hand in HANDS}
         self._get_hand_status()
-        self.best_hand = [_hand for _hand in self.status if self.status[_hand]][-1]
+
+        # name of best hand (eg. Flush)
+        self.best_hand_name = [stat for stat in self.status if self.status[stat]][-1]
+
+        # best five cards in hand (all that really matters)
+        best_cards = self.status[self.best_hand_name]
+        self.best_cards = best_cards + [card for card in self.hand if card not in best_cards][::-1][:5 - len(best_cards)]
 
     def __repr__(self):
         return f'HandParser({str(self)})'
+
     def __str__(self):
         return str([f'{suit} of {color}' for suit, color in self.hand])
 
+    def __eq__(self, other):
+        return a > b and a < b
+
+    def __gt__(self, other):
+        if HANDS.index(self.best_hand_name) > HANDS.index(other.best_hand_name):
+            return True
+        elif HANDS.index(self.best_hand_name) < HANDS.index(other.best_hand_name):
+            return False
+        else:
+            for s_card, o_card in zip(self.best_cards, other.best_cards):
+                if SUITS.index(s_card) > SUITS.index(o_card):
+                    return True
+                elif SUITS.index(s_card) < SUITS.index(o_card):
+                    return False
+        return False
+
+    def __lt__(self, other):
+        return self != other and not self > other
+
     def status_repr(self):
-        return '\n'.join([f'{stat} -> {self.status[stat]}' for stat in self.status])
+        return '\n'.join([f'{stat} --> {self.status[stat]}' for stat in self.status])
+
+    def best_hand_repr(self):
+        win = [_hand for _hand in self.status if self.status[_hand]][-1]
+        if win in ['One Pair', 'Three of a Kind', 'Four of a Kind']:
+            return f'{win} of {self.status[win][0][0]}\'s'
+        elif win == 'High Card':
+            return f'High Card {self.status["High Card"][-1][0]}'
+        elif win == 'Two Pairs':
+            return f'Two Pairs, {self.status["Two Pairs"][0][0]}\'s and {self.status["Two Pairs"][2][0]}\'s'
+        elif win == 'Straight':
+            return f'{"Straight"} from {self.status["Straight"][0][0]}\'s to {self.status["Straight"][-1][0]}\'s'
+        elif win == 'Flush':
+            return f'Flush of {self.status["Flush"][0][1]} with high card {self.status["Flush"][-1][0]}'
+        elif win == 'Full House':
+            return f'Full House {self.status["Full House"][0][0][0]}\'s over {self.status["Full House"][-1][0][0]}\'s'
+        elif win == 'Straight Flush':
+            return f'{"Straight Flush"} of {self.status["Straight Flush"][0][1]} from {self.status["Straight Flush"][0][0]}\'s to {self.status["Straight Flush"][-1][0]}\'s'
 
     def _get_hand_status(self):
         # Check for pairs
@@ -73,52 +116,36 @@ class HandParser:
                 elif suits.index(hand[i][0]) != suits.index(hand[i + 1][0]):
                     straight_count = 1
                     duplicates = 0
+            if aces_back == aces_front:
+                break
 
-        whole_straight  = whole_straight[0] if len(whole_straight[0]) >= len(whole_straight[1]) else whole_straight[1]
+        whole_straight = whole_straight[0] if len(whole_straight[0]) >= len(whole_straight[1]) else whole_straight[1]
         # remove duplicates in the middle of straight eg. 5,6,6,7,8,9
-        self.status['Straight'] = [whole_straight[i] for i in range(len(whole_straight)) if whole_straight[i][0] not in self.get_suits(whole_straight[:i])][-5:]
+        self.status['Straight'] = [whole_straight[i] for i in range(len(whole_straight)) if whole_straight[i][0] not in self.get_suits(whole_straight[:i])][-5:][::-1]
 
         # Check for Flush
         for color in COLORS:
             if self.colors.count(color) >= 5:
-                self.status['Flush'] = self.get_same_colors(self.hand, color)[-5:]
+                self.status['Flush'] = self.get_same_colors(self.hand, color)[-5:][::-1]
                 break
 
         # Check for Straight Flush
         if self.status['Straight'] and self.status['Flush']:
             candidates =  self.get_same_colors(whole_straight, color)
-            indx = self.five_aligned(candidates)
-            self.status['Straight Flush'] = candidates[::-1][indx[0]: indx[1]][::-1] if indx else []
+            # we know all are the same color so they are all different numbers
+            for pos in [[SUITS.index(suit) for suit, _ in candidates], [SUITS_S.index(suit) for suit, _ in candidates]]:
+                count = 1
+                for i in range(len(pos) - 1)[::-1]:
+                    count = count + 1 if pos[i] + 1 == pos[i + 1] else 1
+                    if count == 5:
+                        self.status['Straight Flush'] = candidates[::-1][i: i + 5][::-1]
+                        break
+                if self.status['Straight Flush']:
+                    break
 
         # Set high card if there is none higher hands matched
         if not [self.status[stat_name] for stat_name in self.status if self.status[stat_name]]:
             self.status['High Card'] = self.hand[-5:]
-
-    def best_hand_repr(self):
-        win = self.best_hand
-        if win in ['One Pair', 'Three of a Kind', 'Four of a Kind']:
-            return f'{win} of {self.status[win][0][0]}\'s'
-        elif win == 'High Card':
-            return f'High Card {self.status["High Card"][-1][0]}'
-        elif win == 'Two Pairs':
-            return f'Two Pairs, {self.status["Two Pairs"][0][0]}\'s and {self.status["Two Pairs"][2][0]}\'s'
-        elif win == 'Straight':
-            return f'{"Straight"} from {self.status["Straight"][0][0]}\'s to {self.status["Straight"][-1][0]}\'s'
-        elif win == 'Flush':
-            return f'Flush of {self.status["Flush"][0][1]} with high card {self.status["Flush"][-1][0]}'
-        elif win == 'Full House':
-            return f'Full House {self.status["Full House"][0][0][0]}\'s over {self.status["Full House"][-1][0][0]}\'s'
-        elif win == 'Straight Flush':
-            return f'{"Straight Flush"} of {self.status["Straight Flush"][0][1]} from {self.status["Straight Flush"][0][0]}\'s to {self.status["Straight Flush"][-1][0]}\'s'
-
-    @staticmethod
-    def is_valid_hand(hand):
-        if not (len(hand) == len(set(hand)) == 7):
-            return False
-        for card in hand:
-            if card not in CARDS:
-                return False
-        return True
 
     @staticmethod
     def split_cards(raw_cards):
@@ -128,19 +155,6 @@ class HandParser:
     def sort_cards(split_cards):
         sorted_indexed = sorted([[SUITS.index(suit), color] for suit, color in split_cards])
         return [[SUITS[i], color] for i, color in sorted_indexed]
-
-    @staticmethod
-    def five_aligned(split_cards):
-        if_aces_back = [SUITS.index(suit) for suit, _ in split_cards]
-        if_aces_front = [SUITS_S.index(suit) for suit, _ in split_cards]
-        # we know all are the same color so they are all different numbers
-        for pos in [if_aces_back, if_aces_front]:
-            count = 1
-            for i in range(len(pos) - 1)[::-1]:
-                count = count + 1 if pos[i] + 1 == pos[i + 1] else 1
-                if count == 5:
-                    return (i, i + count)
-        return False
 
     @staticmethod
     def get_suits(split_cards):
@@ -159,10 +173,6 @@ def random_hand():
     hand = [cards.pop(randint(0, len(cards) - 1)) for _ in range(7)]
     return hand
 
-l = []
-for i in range(10000):
-    c = random_hand()
-    a = HandParser(c)
-    l.append(a.best_hand)
-for elt in set(l):
-    print(f'{elt}: {l.count(elt)}')
+a = HandParser(['2 of Hearts', '3 of Hearts', '4 of Hearts', '5 of Hearts',
+		'6 of Spades', '7 of Hearts', '8 of Clubs'])
+print(a.status_repr())

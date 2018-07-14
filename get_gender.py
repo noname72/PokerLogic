@@ -14,12 +14,12 @@ def get_gender(name):
     g = check_get('http://www.namespedia.com/details/{}'.format(name))
     if g is None:
         return None
-
+        
     soup = BeautifulSoup(g.text, 'html.parser')
 
-    s = str(soup.select('#content'))
-    ind = s.find(r'% feminine')
-    proc = s[ind-3: ind].split()
+    content = str(soup.select('#content'))
+    ind = content.find(r'% feminine')
+    proc = content[ind-3: ind].split()
     proc = [elt for elt in proc if elt.isdigit()][0]
 
     gender = 'Masculine' if int(proc) < 50 else 'Feminine'

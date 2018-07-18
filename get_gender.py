@@ -3,18 +3,19 @@ from bs4 import BeautifulSoup
 
 def check_get(link):
     try:
-        g = get(link)
+        g = get(link, timeout = 2)
     except RequestException as e:
         print(e)
         return None
-    if g.ok and 'html' in g.headers['Content-Type']:
+        
+    if g.ok and 'html' in g.headers['Content-Type'] and g.status_code == 200:
         return g
 
 def get_gender(name):
     g = check_get('http://www.namespedia.com/details/{}'.format(name))
     if g is None:
         return None
-        
+
     soup = BeautifulSoup(g.text, 'html.parser')
 
     content = str(soup.select('#content'))

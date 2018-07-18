@@ -72,11 +72,11 @@ class HandParser:
         elif win == 'Two Pairs':
             return f'Two Pairs, {self.status["Two Pairs"][0][0]}\'s and {self.status["Two Pairs"][2][0]}\'s'
         elif win == 'Straight':
-            return f'{"Straight"} from {self.status["Straight"][0][0]}\'s to {self.status["Straight"][-1][0]}\'s'
+            return f'{"Straight"} from {self.status["Straight"][-1][0]}\'s to {self.status["Straight"][0][0]}\'s'
         elif win == 'Flush':
-            return f'Flush of {self.status["Flush"][0][1]} with high card {self.status["Flush"][-1][0]}'
+            return f'Flush of {self.status["Flush"][0][1]} with high card {self.status["Flush"][0][0]}'
         elif win == 'Full House':
-            return f'Full House {self.status["Full House"][0][0][0]}\'s over {self.status["Full House"][-1][0][0]}\'s'
+            return f'Full House {self.status["Full House"][0][0]}\'s over {self.status["Full House"][-1][0]}\'s'
         elif win == 'Straight Flush':
             return f'{"Straight Flush"} of {self.status["Straight Flush"][0][1]} from {self.status["Straight Flush"][0][0]}\'s to {self.status["Straight Flush"][-1][0]}\'s'
 
@@ -182,6 +182,18 @@ class HandParser:
     def max(hands : list) -> list:
         winner = max(hands)
         return [hand for hand in hands if hand == winner]
+
+# player Hand
+class Hand(HandParser):
+    def __init__(self, name, hand):
+        super().__init__(hand)
+        self.name = name
+
+    @staticmethod
+    def max(hands: list) -> list:
+        winner = max(hands)
+        return [hand.name for hand in hands if hand == winner]
+
 
 from random import randint, shuffle
 def random_hand():

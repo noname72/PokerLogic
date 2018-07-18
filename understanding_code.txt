@@ -1,0 +1,3 @@
+STRATEGY FOR CHECKING AND DEAING WINNNGS:
+We start by sorting the players who have contributed the least to the pot to the ones who have contributed the most and add those who called all the way to the end (in any order).
+Then we loop through the sorted list and check every time if the person is in winning hands, and if he is we split everything that he contributed to pots but not more than our loop player

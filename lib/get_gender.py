@@ -7,7 +7,7 @@ def check_get(link):
     except RequestException as e:
         print(e)
         return None
-        
+
     if g.ok and 'html' in g.headers['Content-Type'] and g.status_code == 200:
         return g
 
@@ -23,8 +23,7 @@ def get_gender(name):
     proc = content[ind-3: ind].split()
     proc = [elt for elt in proc if elt.isdigit()][0]
 
-    gender = 'Masculine' if int(proc) < 50 else 'Feminine'
-
+    gender = 'Male' if int(proc) < 50 else 'Female'
     return gender
 
 if __name__ == '__main__':

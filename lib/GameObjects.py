@@ -9,6 +9,8 @@ VALUES = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Jack', 'Queen', 'King',
 SUITS = ['Spades', 'Clubs', 'Hearts', 'Diamonds']
 CARDS = ['{0} of {1}'.format(value, suit) for suit in SUITS for value in VALUES]
 
+TABLE_DICT = {0: 0, 3: 1, 4: 2, 5: 3}
+
 # player Hand
 class Hand(HandParser):
     def __init__(self, name, hand):
@@ -119,6 +121,9 @@ class Player:
     def __gt__(self, other):
         return False
 
+    def __bool__(self):
+        return self.participating
+
     def is_active(self):
         return self.participating and not self.is_folded and not self.is_all_in
 
@@ -146,47 +151,59 @@ class PokerGame:
 
     # accepts PlayerGroup as players and big_blinds
     def __init__(self, players, big_blind):
+        self.on_standby = False
+
         self.players = players
         self.big_blind = big_blind
 
-        self.button = players[0] # player that posts big blind (starts with the first one)
         self.rounds_played = 0
 
         # changes during game, resets every round
+        self.button = players[0] # player that posts big blind (starts with the first one)
         self.deck = []
         self.table = []
+
+        self.current_player = None # player whose turn it is
 
     # sets new button player and new deck; resets players cards, money_in_pot, folded and all_in status
     # method must be called every beginning of a new round (even first)
     def new_round(self):
         self.rounds_played += 1
         self.table = []
-        self.button = self.players.next_participating_player_from(self.button)
         self.deck = CARDS.copy()
         shuffle(self.deck)
 
         self.public_out(round_index = self.rounds_played, _id = 'New Round')
         for player in self.players:
+            player.participating = False if player.money == 0 else True # this is checked at deal winnings or fold
             player.cards = tuple(self.deck.pop(0) for _ in range(2)) if player.participating else ()
-            player.money_given = [0, 0, 0, 0]
-            player.stake = 0
+            player.money_given, player.stake = [0, 0, 0, 0], 0
+            player.played_turn = False
             player.is_folded = False
             player.is_all_in = False
-            player.participating = False if player.money == 0 else True # this is checked at deal winnings or fold
             player.private_out(cards = player.cards, _id = 'Dealt Cards')
 
-    # resets played_turn and money_in_pot for every player. Must also be called every new turn
-    def new_turn(self, turn):
-        # PRE-FLOP
-        if turn == "PRE-FLOP":
-            # take blinds
-            self.process_action(self.players.next_active_player_from(self.button), f"RAISE {self.big_blind // 2}")
-            self.public_out(player = self.players.previous_active_player_from(self.button).name, _id = 'Small Blind')
-            self.process_action(self.button, f"RAISE {self.big_blind // 2}") # BIG_BLIND = SMALL_BLIND raised by SMALL_BLIND
-            self.public_out(player = self.button.name, _id = 'Big Blind')
+        self.button = self.players.next_active_player_from(self.button)
+        self.current_player = self.players.next_active_player_from(self.button)
+
+        prev_player = self.players.previous_active_player_from(self.button)
+        self.process_action(prev_player, f"RAISE {self.big_blind // 2}")
+        prev_player.played_turn = False
+        self.public_out(player = prev_player.name, _id = 'Small Blind')
+        self.process_action(self.button, f"RAISE {self.big_blind // 2}") # BIG_BLIND = SMALL_BLIND raised by SMALL_BLIND
+        self.button.played_turn = False
+        self.public_out(player = self.button.name, _id = 'Big Blind')
+
+        to_call = self.get_money_to_call() - self.current_player.money_given[TABLE_DICT[len(self.table)]]
+        to_call_str = str(to_call) + " to call" if to_call != 0 else ''
+        self.public_out(self.current_player.name + "\n" + to_call_str)
+
+    # resets played_turn and money_in_pot for every player. Initializes new turn based how many cards were on the table
+    def new_turn(self, turn=None):
+        turn = {0: 'FLOP', 3: 'TURN', 4: "RIVER"}[len(self.table)]
 
         # FLOP
-        elif turn == "FLOP":
+        if turn == "FLOP":
             self.table.extend([self.deck.pop(0) for _ in range(3)])
 
         # TURN
@@ -202,15 +219,17 @@ class PokerGame:
 
         self.public_out(turn_name = turn, table = self.table, _id = 'New Turn')
 
-    # adds player to players from an external source
-    def add_player(self, player):
-        self.players.append(player)
 
-    # removes player from players from an external source
-    def remove_player(self, name):
+    def is_ok(self):
+        self.update_participating_players()
+        if not 2 <= len(self.players.get_participating_players()) <= 9:
+            return False
+        return True
+
+    def get_player_by_attr(self, attr, value):
         for player in self.players:
-            if player.name == name:
-                self.players.remove(player)
+            if player.__getattribute__(attr) == value:
+                return player
 
     # set participation status of players without money to 0
     def update_participating_players(self):
@@ -218,30 +237,32 @@ class PokerGame:
             if player.money == 0:
                 player.participating = False
 
-    # checks if all active players (not all_in or folded and participating) have given equal amount of money, so called
+    # this is used to see whether round can continue to another turn
+    # checks if all active players have given equal amount of money, and those that have gone all in have less money in that those who are active
     def pot_is_equal(self):
-        dic = {0: 0, 3: 1, 4: 2, 5: 3}
-        all_ins_money = [player.money_given[dic[len(self.table)]] for player in self.players if player.is_all_in] + [0] # so max returns 0 or max money_given
-        active_money = [player.money_given[dic[len(self.table)]] for player in self.players if player.is_active]
-        return len(set(active_money)) <= 1 and active_money[0] >= max(all_ins_money)
+        all_ins_money = [player.money_given[TABLE_DICT[len(self.table)]] for player in self.players if player.is_all_in] or [0] # so max returns 0 or max money_given
+        active_money = [player.money_given[TABLE_DICT[len(self.table)]] for player in self.players if player.is_active()] or [float('Inf')] # so the second boolean expression works
+        return len(set(active_money)) == 1 and active_money[0] >= max(all_ins_money)
 
     # money other players have to call (or go all_in) to continiue to the next turn
     def get_money_to_call(self):
-        dic = {0: 0, 3: 1, 4: 2, 5: 3}
-        return max(player.money_given[dic[len(self.table)]] for player in self.players)
+        return max(player.money_given[TABLE_DICT[len(self.table)]] for player in self.players)
 
     # returns [a,b,c,d] for pot invested on every turn during round (for pre-flop, flop, turn, river)
     def get_pot_size(self):
-        return [sum(player.money_given[i] for player in self.players.get_participating_players()) for i in range(4)]
+        return [sum(player.money_given[i] for player in self.players) for i in range(4)]
 
     # process raise, call or fold and return true or false whether input is valid
     def process_action(self, player, action):
-        dic = {0: 0, 3: 1, 4: 2, 5: 3}
-        turn_index = dic[len(self.table)]
+        action = action.lower()
+        if not (action in ['call', 'check', 'fold', 'all in'] or action.startswith('raise ')):
+            return False
+
+        turn_index = TABLE_DICT[len(self.table)]
         money_to_call = self.get_money_to_call()
 
         # process RAISE (input has to be "raise X", where X is a non negative integer, by which player raises the money_to_call)
-        if action.lower().startswith('raise ') and len(action.split()) == 2 and self.isint(action.split()[1]):
+        if action.startswith('raise ') and len(action.split()) == 2 and self.isint(action.split()[1]):
             raised_by = int(float(action.split()[1]))
 
             # money by which player raised + money left to call  - money already given this turn < all the money player has left
@@ -259,30 +280,57 @@ class PokerGame:
 
             return True
 
-        elif action.lower() == 'all in':
+        elif action == 'all in':
             return self.process_action(player, "raise " + str(player.money))
 
         # process CALL (is the same as if player raised the others by 0)
-        elif action.lower() == 'call':
+        elif action == 'call':
             return self.process_action(player, "raise 0")
 
         # process check if there is no money to call (same as call only for instances when you call 0)
-    elif action.lower() == 'check' and money_to_call - player.money_given[turn_index] == 0:
+        elif action == 'check' and money_to_call - player.money_given[turn_index] == 0:
             return self.process_action(player, "raise 0")
 
         # process FOLD
-        elif action.lower() == 'fold':
+        elif action == 'fold':
             player.is_folded = True
             player.played_turn = True
             return True
 
-        actions = {'show money': lambda: player.private_out(player_money = player.money, _id = 'Show Money')}
-        if action.lower() in actions:
-            actions[action.lower()]()
-            return False
-
         # if none of the previous returns initializes input is invalid
         return False
+
+    # This continues the game and is called with player input
+    # this function speculates that amount of participating players in game is adequate, outer functions should deal with that
+    def process_after_input(self):
+
+        # player won round is over
+        if len(self.players.get_not_folded_players()) == 1:
+            self.deal_winnings()
+            return "End Round"
+
+        # if everyone or everyone but one went all in and there is more than one player who hasnt folded input stage is over
+        if len(self.players.get_active_players()) <= 1 and self.pot_is_equal() and len(self.players.get_not_folded_players()) >= 2:
+            for _ in range(3 - TABLE_DICT[len(self.table)]): # user input not needed, so turns continue within this same function
+                self.new_turn()
+            self.deal_winnings()
+            return "End Round"
+
+        # turn ends if money on the table is equal (all ins are treated differentely) and all players have played their turn (other scenarios were processed before)
+        if self.players.all_played_turn() and self.pot_is_equal():
+            if len(self.table) == 5:
+                self.deal_winnings()
+                return "End Round"
+            else:
+                self.current_player = self.button
+                self.new_turn()
+
+        self.current_player = self.players.next_active_player_from(self.current_player)
+        to_call = self.get_money_to_call() - self.current_player.money_given[TABLE_DICT[len(self.table)]]
+        to_call_str = str(to_call) + " to call" if to_call != 0 else ''
+        self.public_out(self.current_player.name + "\n" + to_call_str)
+        return None
+
 
     def deal_winnings(self):
         # this matters only for later use of this function
@@ -343,6 +391,7 @@ class PokerGame:
             player_hands.remove([player_hand for player_hand in player_hands if player_hand.name == stayed_in.name][0])
 
         self.update_participating_players()
+
 
     @staticmethod
     def isint(string):

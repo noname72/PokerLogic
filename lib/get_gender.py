@@ -17,9 +17,11 @@ def get_gender(name):
         return None
 
     soup = BeautifulSoup(g.text, 'html.parser')
-
     content = str(soup.select('#content'))
     ind = content.find(r'% feminine')
+    if ind == -1:
+        return None
+
     proc = content[ind-3: ind].split()
     proc = [elt for elt in proc if elt.isdigit()][0]
 

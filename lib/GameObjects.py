@@ -39,19 +39,6 @@ class PlayerGroup(list):
             else:
                 return _return
 
-    def next_participating_player_from(self, index_player):
-        assert len(self.get_participating_players()) >= 1
-        cyc = cycle(self)
-        for player in cyc:
-            if player == index_player:
-                break
-        for player in cyc:
-            if player.participating:
-                return player
-
-    def previous_participating_player_from(self, index_player):
-        return self[::-1].next_participating_player_from(index_player)
-
     def next_active_player_from(self, index_player):
         assert len(self.get_active_players()) >= 1
         cyc = cycle(self)
@@ -92,9 +79,9 @@ class Player:
         self.name = name
 
         # this changes through the game but never resets
-        # participation status changes to false if player loses all money or leaves game
         self.money = money
-        self.participating = True
+        self.left_game = False # signals that player should be removed from players by the end of the turn
+        self.participating = True # participation status changes to false if player loses all money or chooses to not participate while still in the game
 
         # this resets every round
         self.cards = ()
@@ -119,7 +106,7 @@ class Player:
         return True
 
     def __gt__(self, other):
-        return False
+        return True
 
     def __bool__(self):
         return self.participating
@@ -153,8 +140,9 @@ class PokerGame:
     def __init__(self, players, big_blind):
         self.on_standby = False
 
-        self.players = players
         self.big_blind = big_blind
+        self.players = players # players playing the current round
+        self.new_players = [] # players that will be added by the rounds end
 
         self.rounds_played = 0
 
@@ -227,15 +215,21 @@ class PokerGame:
         return True
 
     def get_player_by_attr(self, attr, value):
-        for player in self.players:
+        for player in self.players + self.new_players:
             if player.__getattribute__(attr) == value:
                 return player
 
     # set participation status of players without money to 0
     def update_participating_players(self):
-        for player in self.players:
+        for player in self.players + self.new_players:
             if player.money == 0:
                 player.participating = False
+
+    def update_players_in_game(self):
+        self.players.extend(self.new_players)
+        for player in self.players:
+            if player.left_game:
+                self.players.remove(player)
 
     # this is used to see whether round can continue to another turn
     # checks if all active players have given equal amount of money, and those that have gone all in have less money in that those who are active
@@ -304,7 +298,7 @@ class PokerGame:
     # this function speculates that amount of participating players in game is adequate, outer functions should deal with that
     def process_after_input(self):
 
-        # player won round is over
+        # player won, round is over
         if len(self.players.get_not_folded_players()) == 1:
             self.deal_winnings()
             return "End Round"
@@ -354,6 +348,7 @@ class PokerGame:
 
         # hand objects of winning players' hands
         player_hands = [Hand(player.name, list(player.cards) + self.table) for player in active_and_sorted_all_ins]
+        static_hands = player_hands.copy()
 
         # show players' hands
         for stayed_in in active_and_sorted_all_ins:
@@ -385,12 +380,16 @@ class PokerGame:
 
                     # if players collected any left stakes (winnings) it is logged
                     if player_winnings:
-                        self.public_out(winner = winning_split.name,  won = player_winnings, winner_hand = winning_hand_name, _id = 'Declare Finished Winner')
+                        subgame_participants = [plyr.name for plyr in active_and_sorted_all_ins if plyr.stake >= winning_split.stake]
+                        _kicker = Hand.get_kicker([hand for hand in static_hands if hand.name in subgame_participants])
+                        self.public_out(winner = winning_split.name,  won = player_winnings, winner_hand = winning_hand_name, kicker = _kicker, _id = 'Declare Finished Winner')
 
             # remove hands of players with lower stakes, as they are not competing in the same stake range (they already collected their bet equivalence if won)
-            player_hands.remove([player_hand for player_hand in player_hands if player_hand.name == stayed_in.name][0])
+            player_hands = [player_hand for player_hand in player_hands if player_hand.name != stayed_in.name]
 
+        # this is done when the round ends and deal winnings is always the last function called before the round ends
         self.update_participating_players()
+        self.update_players_in_game()
 
 
     @staticmethod

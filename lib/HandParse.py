@@ -4,7 +4,9 @@ VALUES_S = ['Ace'] + VALUES[:-1]
 SUITS = ['Hearts', 'Diamonds', 'Spades', 'Clubs']
 CARDS = [f'{value} of {suit}' for suit in SUITS for value in VALUES]
 
+# 88.6s for Parsing a Million hands (lets get that to 50)
 class HandParser:
+    __slots__ = ['original', 'hand', 'values', 'suits', 'status', 'best_hand_name', 'best_cards', 'kickers', 'parsed_hand']
 
     def __init__(self, hand):
         # AssertionError if hand is not valid
@@ -22,8 +24,9 @@ class HandParser:
         self.best_hand_name = [stat for stat in self.status if self.status[stat]][-1]
 
         # best five cards in hand (all that really matters)
-        best_cards = self.status[self.best_hand_name]
-        self.best_cards = best_cards + [card for card in self.hand if card not in best_cards][::-1][:5 - len(best_cards)]
+        self.best_cards = self.status[self.best_hand_name]
+        self.kickers = [card for card in self.hand if card not in self.best_cards][::-1][:5 - len(self.best_cards)]
+        self.parsed_hand = self.best_cards + self.kickers
 
     def __repr__(self):
         return f'HandParser({str(self)})'
@@ -40,11 +43,10 @@ class HandParser:
         elif HANDS.index(self.best_hand_name) < HANDS.index(other.best_hand_name):
             return False
         else:
-            for s_card, o_card in zip(self.best_cards, other.best_cards):
-                if VALUES.index(s_card[0]) > VALUES.index(o_card[0]):
-                    return True
-                elif VALUES.index(s_card[0]) < VALUES.index(o_card[0]):
-                    return False
+            for s_card, o_card in zip(self.parsed_hand, other.parsed_hand):
+                if VALUES.index(s_card[0]) == VALUES.index(o_card[0]):
+                    continue
+                return VALUES.index(s_card[0]) > VALUES.index(o_card[0])
         return False
 
     def __lt__(self, other):
@@ -53,11 +55,10 @@ class HandParser:
         elif HANDS.index(self.best_hand_name) > HANDS.index(other.best_hand_name):
             return False
         else:
-            for s_card, o_card in zip(self.best_cards, other.best_cards):
-                if VALUES.index(s_card[0]) < VALUES.index(o_card[0]):
-                    return True
-                elif VALUES.index(s_card[0]) > VALUES.index(o_card[0]):
-                    return False
+            for s_card, o_card in zip(self.parsed_hand, other.parsed_hand):
+                if VALUES.index(s_card[0]) == VALUES.index(o_card[0]):
+                    continue
+                return VALUES.index(s_card[0]) < VALUES.index(o_card[0])
         return False
 
     def status_repr(self):
@@ -178,7 +179,36 @@ class HandParser:
     def get_same_values(split_cards, match):
         return [[value, suit] for value, suit in split_cards if value == match]
 
+    # get winners and kicker
     @staticmethod
     def max(hands : list) -> list:
         winner = max(hands)
         return [hand for hand in hands if hand == winner]
+
+    @staticmethod
+    def get_kicker(hands: list):
+        winner = max(hands)
+        losers = [hand for hand in hands if hand < winner]
+        if not losers: # everyone won or winner the only one in hands
+            return None
+        max_loser = max(losers)
+
+        # if winner won by a hand level there is no kicker
+        if HANDS.index(winner.best_hand_name) > HANDS.index(max_loser.best_hand_name):
+            return None
+        else:
+            winner_best_vals = [VALUES.index(card[0]) for card in winner.best_cards]
+            loser_best_vals = [VALUES.index(card[0]) for card in max_loser.best_cards]
+            if winner.best_hand_name in ['One Pair', 'Two Pairs', 'Three of a Kind', 'Full House', 'Four of a Kind']:
+                if set(winner_best_vals) != set(loser_best_vals):
+                    return None
+                else:
+                    searchForKicker = zip(winner.kickers, max_loser.kickers)
+            else:
+                searchForKicker = zip(winner.best_cards, max_loser.best_cards)
+
+            for w_card, l_card in searchForKicker:
+                if VALUES.index(w_card[0]) > VALUES.index(l_card[0]):
+                    return w_card[0]
+
+        return None

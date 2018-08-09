@@ -23,29 +23,45 @@ class Dealer(Client):
 
     def onPeopleAdded(self, added_ids, author_id, thread_id, **kwargs):
         if author_id == self.uid:
-            self.add_game(thread_id)
-        else:
-            game = self.fetch_game_by_table_id(thread_id)
-            for added_id in added_ids:
-                game.players.append(FbPlayer(self.getUserInfo(added_id)))
+            return None
 
+        game = self.fetch_game_by_table_id(thread_id)
+        if game:
+            for added_id in added_ids:
+                if added_id in [in_game.fb_id for in_game in game.players]:
+                    added_player = game.get_player_by_attr('fb_id', added_player)
+                    assert added_player.left_game
+                    added_player.left_game = False
+                else:
+                    game.new_players.append(FbPlayer(self.getUserInfo(added_in)))
+
+            game.update_players_in_game()
             # if game was paused because there werent enough players, and now its ok, new round can begin
             if game.on_standby and game.is_ok():
                 game.on_standby = False
                 game.new_round()
 
     def onPersonRemoved(self, removed_id, author_id, thread_id, **kwargs):
-        assert removed_id != self.uid
-
         game = self.fetch_game_by_table_id(thread_id)
-        if not game:
-            raise Exception('person removed from table containing dealer, but not the game')
+        if game: # if a game isnt played on the table there isnt anything to do
+            if removed_id == self.uid: # if a dealer is removed, remove game on that table from games
+                self.games.remove(game)
+                return None
 
-        player = game.get_player_by_attr('fb_id', removed_id)
-        if removed_id == game.current_player.fb_id:
-            self.onMessage(removed_id, 'fold', thread_id)
-        else:
-            player.is_folded = True
+            player = game.get_player_by_attr('fb_id', removed_id)
+            if removed_id == game.current_player.fb_id: # if removed player is that of which input is required, fold his hand and tag him so he is removed by the end of the turn
+                self.onMessage(removed_id, 'fold', thread_id)
+                player.left_game = True
+            elif removed_id in [nw_plyr.fb_id for nw_plyr in game.new_players]: # if the removed player isn't yet playing in rounds, just remove him
+                game.removed_players.remove(player)
+            else: # if player is playing in round, but isnt the one whose input is required set status of his hand to folded and tag him for removal
+                player.is_folded = True
+                player.left_game = True
+
+            game.update_players_in_game()
+            if game.on_standby and game.is_ok():
+                game.on_standby = False
+                fame.new_round()
 
     # processing input from players and saving it into glob_message
     def onMessage(self, author_id, message, thread_id, **kwargs):
@@ -56,13 +72,12 @@ class Dealer(Client):
             game = self.fetch_game_by_table_id(thread_id)
             author_player = game.get_player_by_attr('fb_id', author_id)
 
-            if author_id == game.current_player.fb_id and game.on_standby == False and game.process_action(author_player, message):
+            if not game.on_standby and author_id == game.current_player.fb_id and game.process_action(author_player, message):
                 status = game.process_after_input()
 
                 # this is where players are added or removed for the next round
                 # round ends, we check if conditions for another round are met
                 if status == "End Round":
-                    self.update_players_in_game(game)
                     if game.is_ok():
                         game.new_round()
                     else:
@@ -70,13 +85,14 @@ class Dealer(Client):
 
             return None
 
-        elif thread_id != author_id and message.lower() == 'activate':
-            self.add_game(self, thread_id)
+        elif kwargs['thread_type'] == ThreadType.GROUP:
+            if message.lower() == 'activate':
+                self.add_game(self, thread_id)
             return None
 
-        user_game = self.searchForPlayer(thread_id)
-        if user_game is not None and message.lower() == 'show money':
-            user_player = user_game.get_player_by_attr('fb_id', thread_id)
+        user_game = self.fetch_games_by_player_id(thread_id)
+        if user_game and message.lower() == 'show money':
+            user_player = user_game[0].get_player_by_attr('fb_id', thread_id)
             user_player.private_out(player_money = user_player.money, _id = 'Show Money')
 
 
@@ -85,24 +101,18 @@ class Dealer(Client):
             game = FbPokerGame(FbPlayerGroup(self.fetch_players_on_table(table)), big_blind, table)
             self.games.append(game)
 
-            # if the conditions for a new round are met game starts
+            # if the conditions for a new round are met, game starts
             if game.is_ok():
                 game.new_round()
             else:
                 game.on_standby = True
             return game
 
-    def update_players_in_game(self, game):
-        players_on_table = self.fetch_players_on_table(game.table_id)
-        for player_in_game in game.players:
-            if player_in_game not in players_on_table:
-                game.players.remove(player)
+        else:
+            print('game already exists')
 
-    def searchForPlayer(self, player_id):
-        for game in self.games:
-            if player_id in [player.fb_id for player in game.players]:
-                return game
-
+    def fetch_games_by_player_id(self, player_id):
+        return [game for game in self.games if player_id in [player.fb_id for player in game.players]]
     def fetch_game_by_table_id(self, table_id):
         game = [game for game in self.games if game.table_id == table_id] or [[]]
         return game[0]
@@ -181,12 +191,17 @@ class FbPokerGame(PokerGame):
     'New Turn': lambda kwargs: kwargs['turn_name'] + ':\n' + '  '.join(card for card in kwargs['table']),
     'Player Went All-In': lambda kwargs: kwargs['player'] + ' went all-in with ' + str(kwargs['player_money']),
     'Declare Unfinished Winner': lambda kwargs: kwargs['winner'] + ' won ' + str(kwargs['won']),
-    'Declare Finished Winner': lambda kwargs: kwargs['winner'] + ' won ' + str(kwargs['won']) + ' with ' + kwargs['winner_hand'],
-    'Public Show Cards': lambda kwargs: kwargs['player'] + ' has ' + '  '.join(card for card in kwargs['player_cards'])}
+    'Public Show Cards': lambda kwargs: kwargs['player'] + ' has ' + '  '.join(card for card in kwargs['player_cards']),
+    'Declare Finished Winner': lambda kwargs: kwargs['winner'] + ' won ' + str(kwargs['won']) +
+    ''.join(filter(lambda x: kwargs['kicker'], [', with ' + str(kwargs['kicker']) +  ' kicker']))
+    }
 
-    def __init__(self, players: FbPlayerGroup, big_blind: int, table_id: int): # players is a PlayerGroup objects of FbPlayers
+    def __init__(self, players: FbPlayerGroup, big_blind: int, table_id: str): # players is a PlayerGroup object of FbPlayers
         super().__init__(players, big_blind)
         self.table_id = table_id
+
+    def __eq__(self, other):
+        return self.table_id == other.table_id
 
     def public_out(self, text = None, **kwargs):
         send = None
@@ -202,6 +217,6 @@ class FbPokerGame(PokerGame):
         DEALER.sendMessage(send, thread_id = self.table_id, thread_type = ThreadType.GROUP)
 
 # game continuation
-DEALER.add_game(TABLE_ID)
 if __name__ == '__main__':
+    DEALER.add_game(TABLE_ID)
     DEALER.listen()

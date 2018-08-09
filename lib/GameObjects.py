@@ -153,6 +153,44 @@ class PokerGame:
 
         self.current_player = None # player whose turn it is
 
+    def is_ok(self):
+        self.update_participating_players()
+        if not 2 <= len(self.players.get_participating_players()) <= 9:
+            return False
+        return True
+
+    def get_player_by_attr(self, attr, value):
+        for player in self.players + self.new_players:
+            if player.__getattribute__(attr) == value:
+                return player
+
+    # set participation status of players without money to 0
+    def update_participating_players(self):
+        for player in self.players + self.new_players:
+            if player.money == 0:
+                player.participating = False
+
+    def update_players_in_game(self):
+        self.players.extend(self.new_players)
+        for player in self.players:
+            if player.left_game:
+                self.players.remove(player)
+
+    # money other players have to call (or go all_in) to continiue to the next turn
+    def get_money_to_call(self):
+        return max(player.money_given[TABLE_DICT[len(self.table)]] for player in self.players)
+
+    # returns [a,b,c,d] for pot invested on every turn during round (for pre-flop, flop, turn, river)
+    def get_pot_size(self):
+        return [sum(player.money_given[i] for player in self.players) for i in range(4)]
+
+    # this is used to see whether round can continue to another turn
+    # checks if all active players have given equal amount of money, and those that have gone all in have less money in that those who are active
+    def pot_is_equal(self):
+        all_ins_money = [player.money_given[TABLE_DICT[len(self.table)]] for player in self.players if player.is_all_in] or [0] # so max returns 0 or max money_given
+        active_money = [player.money_given[TABLE_DICT[len(self.table)]] for player in self.players if player.is_active()] or [float('Inf')] # so the second boolean expression works
+        return len(set(active_money)) == 1 and active_money[0] >= max(all_ins_money)
+
     # sets new button player and new deck; resets players cards, money_in_pot, folded and all_in status
     # method must be called every beginning of a new round (even first)
     def new_round(self):
@@ -206,45 +244,6 @@ class PokerGame:
             player.played_turn = False
 
         self.public_out(turn_name = turn, table = self.table, _id = 'New Turn')
-
-
-    def is_ok(self):
-        self.update_participating_players()
-        if not 2 <= len(self.players.get_participating_players()) <= 9:
-            return False
-        return True
-
-    def get_player_by_attr(self, attr, value):
-        for player in self.players + self.new_players:
-            if player.__getattribute__(attr) == value:
-                return player
-
-    # set participation status of players without money to 0
-    def update_participating_players(self):
-        for player in self.players + self.new_players:
-            if player.money == 0:
-                player.participating = False
-
-    def update_players_in_game(self):
-        self.players.extend(self.new_players)
-        for player in self.players:
-            if player.left_game:
-                self.players.remove(player)
-
-    # this is used to see whether round can continue to another turn
-    # checks if all active players have given equal amount of money, and those that have gone all in have less money in that those who are active
-    def pot_is_equal(self):
-        all_ins_money = [player.money_given[TABLE_DICT[len(self.table)]] for player in self.players if player.is_all_in] or [0] # so max returns 0 or max money_given
-        active_money = [player.money_given[TABLE_DICT[len(self.table)]] for player in self.players if player.is_active()] or [float('Inf')] # so the second boolean expression works
-        return len(set(active_money)) == 1 and active_money[0] >= max(all_ins_money)
-
-    # money other players have to call (or go all_in) to continiue to the next turn
-    def get_money_to_call(self):
-        return max(player.money_given[TABLE_DICT[len(self.table)]] for player in self.players)
-
-    # returns [a,b,c,d] for pot invested on every turn during round (for pre-flop, flop, turn, river)
-    def get_pot_size(self):
-        return [sum(player.money_given[i] for player in self.players) for i in range(4)]
 
     # process raise, call or fold and return true or false whether input is valid
     def process_action(self, player, action):
@@ -380,7 +379,7 @@ class PokerGame:
 
                     # if players collected any left stakes (winnings) it is logged
                     if player_winnings:
-                        subgame_participants = [plyr.name for plyr in active_and_sorted_all_ins if plyr.stake >= winning_split.stake]
+                        subgame_participants = [player.name for player in active_and_sorted_all_ins if player.stake >= winning_split.stake] # subgame participants
                         _kicker = Hand.get_kicker([hand for hand in static_hands if hand.name in subgame_participants])
                         self.public_out(winner = winning_split.name,  won = player_winnings, winner_hand = winning_hand_name, kicker = _kicker, _id = 'Declare Finished Winner')
 

@@ -192,8 +192,8 @@ class FbPokerGame(PokerGame):
     'Player Went All-In': lambda kwargs: kwargs['player'] + ' went all-in with ' + str(kwargs['player_money']),
     'Declare Unfinished Winner': lambda kwargs: kwargs['winner'] + ' won ' + str(kwargs['won']),
     'Public Show Cards': lambda kwargs: kwargs['player'] + ' has ' + '  '.join(card for card in kwargs['player_cards']),
-    'Declare Finished Winner': lambda kwargs: kwargs['winner'] + ' won ' + str(kwargs['won']) +
-    ''.join(filter(lambda x: kwargs['kicker'], [', with ' + str(kwargs['kicker']) +  ' kicker']))
+    'Declare Finished Winner': lambda kwargs: kwargs['winner'] + ' won ' + str(kwargs['won']) + ' with ' + kwargs['winner_hand'] +
+    ''.join(filter(lambda x: kwargs['kicker'], [', ' + str(kwargs['kicker']) +  ' kicker']))
     }
 
     def __init__(self, players: FbPlayerGroup, big_blind: int, table_id: str): # players is a PlayerGroup object of FbPlayers

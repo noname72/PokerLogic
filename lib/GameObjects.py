@@ -177,6 +177,8 @@ class PokerGame:
     # sets new button player and new deck; resets players cards, money_in_pot, folded and all_in status
     # method must be called every beginning of a new round (even first)
     def new_round(self):
+        assert self.round is None and self.is_ok() # round should be None and game should be OK to start another round (external processes should cover this)
+
         self.rounds_played += 1
         self.public_out(round_index = self.rounds_played, _id = 'New Round')
         self.update_participating_players()
@@ -188,6 +190,7 @@ class PokerGame:
 
         def __init__(this, players, button, game_ref):
             this.self = game_ref # im ashamed of this, but there isnt any other way to call public_out with custom game instance arguments
+            this.exit_after_this = False
 
             this.players = players
             this.button = button
@@ -223,7 +226,9 @@ class PokerGame:
         def close(this):
             this.self.update_participating_players()
             this.self.round = None
-            return "End Round"
+
+            # 0 - game should end; 1 - new round should begin
+            return 0 if this.exit_after_this else 1
 
         # money other players have to call (or go all_in) to continiue to the next turn
         def get_money_to_call(this):
@@ -307,7 +312,7 @@ class PokerGame:
         def process_after_input(this):
 
             # player won, round is over
-            if len(this.players.get_not_folded_players()) == 1:
+            if len(this.players.get_not_folded_players()) <= 1:
                 this.deal_winnings()
                 return this.close()
 
@@ -338,6 +343,10 @@ class PokerGame:
             # this matters only for later use of this function
             for player in this.players:
                 player.stake = sum(player.money_given)
+
+            # if all players leave
+            if len(this.players.get_not_folded_players()) == 0:
+                return None
 
             # if there is one player who has not folded he gets everything
             if len(this.players.get_not_folded_players()) == 1:
@@ -389,8 +398,8 @@ class PokerGame:
                         # if players collected any left stakes (winnings) it is logged
                         if player_winnings:
                             subgame_participants = [player.name for player in active_and_sorted_all_ins if player.stake >= winning_split.stake] # subgame participants
-                            _kicker = Hand.get_kicker([hand for hand in static_hands if hand.name in subgame_participants])
-                            this.self.public_out(winner = winning_split.name,  won = player_winnings, winner_hand = winning_hand_name, kicker = _kicker, _id = 'Declare Finished Winner')
+                            kicker = Hand.get_kicker([hand for hand in static_hands if hand.name in subgame_participants])
+                            this.self.public_out(winner = winning_split.name,  won = player_winnings, winner_hand = winning_hand_name, kicker = kicker, _id = 'Declare Finished Winner')
 
                 # remove hands of players with lower stakes, as they are not competing in the same stake range (they already collected their bet equivalence if won)
                 player_hands = [player_hand for player_hand in player_hands if player_hand.name != stayed_in.name]

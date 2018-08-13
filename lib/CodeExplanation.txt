@@ -18,5 +18,7 @@ there are two possibilities for a player that has won or split the pot with play
   by that person is larger than his
 
 
-CREATE ID (FUNCTION ARGUMENT) FOR PRIVATE AND PUBLIC OUTS, SO CUSTOM STYLING OF OUTPUT IS POSSIBLE
-CREATE ALL THE POSSIBLE ID AND STUCK IT SOMEWHERE WITHIN A MODULE
+- create relocation of money (base_money is outside games being played)
+- kicker for high cards (high card King, King kicker)
+- handParser that works with nums instead of strings (aces = 12)
+- resolve the game, if someone wants to quit (end the round being played and then pause the game)

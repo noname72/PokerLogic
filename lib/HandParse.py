@@ -1,4 +1,4 @@
-HANDS = ['High Card', 'One Pair', 'Two Pairs', 'Three of a Kind', 'Straight', 'Flush', 'Full House', 'Four of a Kind', 'Straight Flush']
+HANDS = ['High Card', 'One Pair', 'Two Pair', 'Three of a Kind', 'Straight', 'Flush', 'Full House', 'Four of a Kind', 'Straight Flush']
 VALUES = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Jack', 'Queen', 'King', 'Ace']
 VALUES_S = ['Ace'] + VALUES[:-1]
 SUITS = ['Hearts', 'Diamonds', 'Spades', 'Clubs']
@@ -70,8 +70,8 @@ class HandParser:
             return f'{win} of {self.status[win][0][0]}\'s'
         elif win == 'High Card':
             return f'High Card {self.status["High Card"][0][0]}'
-        elif win == 'Two Pairs':
-            return f'Two Pairs, {self.status["Two Pairs"][0][0]}\'s and {self.status["Two Pairs"][2][0]}\'s'
+        elif win == 'Two Pair':
+            return f'Two Pair, {self.status["Two Pair"][0][0]}\'s and {self.status["Two Pair"][2][0]}\'s'
         elif win == 'Straight':
             return f'{"Straight"} from {self.status["Straight"][-1][0]}\'s to {self.status["Straight"][0][0]}\'s'
         elif win == 'Flush':
@@ -97,7 +97,7 @@ class HandParser:
                 if not (counters[0] == 2 and counters[1] >= 1 or counters[0] == 3 and counters[2] >= 1 or counters[0] == 1):
                     status[from_count_to_hand[counters[0]]] = self.hand[i: i + counters[0]]
                 elif counters[0] == 2 and counters[1] == 1:
-                    status['Two Pairs'] = status['One Pair'] + self.hand[i: i + counters[0]]
+                    status['Two Pair'] = status['One Pair'] + self.hand[i: i + counters[0]]
                     status['One Pair'] = []
                 elif counters[0] == 3 and counters[2] == 1:
                     status['Full House'] = status['Three of a Kind'] + self.hand[i: i + counters[0] - 1]
@@ -108,8 +108,8 @@ class HandParser:
 
         if status['One Pair'] and status['Three of a Kind']:
             status['Full House'] = status['Three of a Kind'] + status['One Pair']
-        if status['Two Pairs'] and status['Three of a Kind']:
-            status['Full House'] = status['Three of a Kind'] + status['Two Pairs'][:2]
+        if status['Two Pair'] and status['Three of a Kind']:
+            status['Full House'] = status['Three of a Kind'] + status['Two Pair'][:2]
 
         # Check for Straight
         whole_straight = [[], []]
@@ -187,6 +187,8 @@ class HandParser:
 
     @staticmethod
     def get_kicker(hands: list):
+        kicker = []
+
         winner = max(hands)
         losers = [hand for hand in hands if hand < winner]
         if not losers: # everyone won or winner the only one in hands
@@ -199,16 +201,19 @@ class HandParser:
         else:
             winner_best_vals = [VALUES.index(card[0]) for card in winner.best_cards]
             loser_best_vals = [VALUES.index(card[0]) for card in max_loser.best_cards]
-            if winner.best_hand_name in ['One Pair', 'Two Pairs', 'Three of a Kind', 'Full House', 'Four of a Kind']:
+            if winner.best_hand_name in ['One Pair', 'Two Pair', 'Three of a Kind', 'Full House', 'Four of a Kind']:
                 if set(winner_best_vals) != set(loser_best_vals):
                     return None
                 else:
                     searchForKicker = zip(winner.kickers, max_loser.kickers)
             else:
-                searchForKicker = zip(winner.best_cards, max_loser.best_cards)
+                searchForKicker = zip(winner.best_cards[1:], max_loser.best_cards[1:])
 
             for w_card, l_card in searchForKicker:
-                if VALUES.index(w_card[0]) > VALUES.index(l_card[0]):
-                    return w_card[0]
+                if VALUES.index(w_card[0]) == VALUES.index(l_card[0]):
+                    kicker.append(w_card[0])
+                elif VALUES.index(w_card[0]) > VALUES.index(l_card[0]):
+                    kicker.append(w_card[0])
+                    return kicker
 
         return None

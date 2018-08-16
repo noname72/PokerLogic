@@ -19,6 +19,12 @@ there are two possibilities for a player that has won or split the pot with play
 
 
 - create relocation of money (base_money is outside games being played)
-- kicker for high cards (high card King, King kicker)
-- handParser that works with nums instead of strings (aces = 12)
-- resolve the game, if someone wants to quit (end the round being played and then pause the game)
+- round instead of //
+
+
+-tjasa's game
+
+- raises on flop if has something
+- reraises as a bluff
+- raises on open straight draws, checks on gutshots
+- tries to bluff straights, when one card is needed

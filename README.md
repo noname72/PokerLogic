@@ -23,7 +23,6 @@ This is a simple use of the library where poker is played on the terminal.
 from lib.PokerGameObject import PlayerGroup, Player, PokerGame
 
 class MyPokerGame(PokerGame):
-
   def public_out(self, *args, **kwargs):
     return print(args) if args else print(kwargs)
 

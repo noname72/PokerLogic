@@ -22,9 +22,18 @@ This is a simple use of the library where poker is played on the terminal.
 ```python
 from lib.PokerGameObject import PlayerGroup, Player, PokerGame
 
+class MyPokerGame(PokerGame):
+
+  def public_out(self, *args, **kwargs):
+    return print(args) if args else print(kwargs)
+
+  def private_out(self, player, *args, **kwargs):
+    base_str = player.name + ' --> '
+    return print(base_str + str(args)) if args else print(base_str + str(kwargs))
+
 PLAYERS = ['Player1', 'Player2', 'Player3', ... , 'PlayerN'] # 2 <= N <= 9
 player_group = PlayerGroup([Player(PLAYER) for PLAYER in PLAYERS])
-game = PokerGame(player_group)
+game = MyPokerGame(player_group)
 
 while True:
   action = input(game.round.current_player.name + ': ')

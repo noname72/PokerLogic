@@ -19,7 +19,7 @@ there are two possibilities for a player that has won or split the pot with play
 
 
 - create relocation of money (base_money is outside games being played)
-- round instead of //
+- create user data in greater detail (folded hands,...)
 
 
 -tjasa's game

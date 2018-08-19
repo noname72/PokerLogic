@@ -1,9 +1,9 @@
 from numpy.random import shuffle
 from itertools import cycle
 try:
-    from HandParse import HandParser
+    from PokerHandParse import HandParser
 except ModuleNotFoundError:
-    from lib.HandParse import HandParser
+    from lib.PokerHandParse import HandParser
 
 # this was just needed constantly within PokerGame
 TABLE_DICT = {0: 0, 3: 1, 4: 2, 5: 3}
@@ -15,7 +15,7 @@ class Hand(HandParser):
         self.name = name
 
     @staticmethod
-    def max(hands: list) -> list:
+    def winners(hands: list) -> list:
         winner = max(hands)
         return [hand.name for hand in hands if hand == winner]
 
@@ -36,6 +36,14 @@ class PlayerGroup(list):
                 return type(self)(_return)
             else:
                 return _return
+
+    def __add__(self, other):
+        added = super().__add__(other)
+        _return = []
+        for pl in added:
+            if pl not in _return:
+                _return.append(pl)
+        return type(self)(_return)
 
     def next_active_player_from(self, index_player):
         assert len(self.get_active_players()) >= 1
@@ -120,22 +128,25 @@ class Player:
     def is_active(self):
         return self.money > 0 and not self.is_folded and not self.is_all_in
 
+
 # everything in here returns cards represented as [value_index, suit_index] to public/private outs
 class PokerGame:
     # these define how a classmethod public_out will respond with given arguments (important when public_out is overriden)
     # these methods must be overriden to have IO support for the game
     IO_actions = {
-    'Dealt Cards': lambda kwargs: None,
-    'New Round': lambda kwargs: None,
-    'Small Blind': lambda kwargs: None,
-    'Big Blind': lambda kwargs: None,
-    'New Turn': lambda kwargs: None,
-    'Player Went All-In': lambda kwargs: None,
-    'Declare Unfinished Winner': lambda kwargs: None,
-    'Declare Finished Winner': lambda kwargs: None,
-    'Public Show Cards': lambda kwargs: None}
-    # this shouldn't be changed
-    __deck = [[value, suit] for suit in range(4) for value in range(12)]
+    'Dealt Cards': lambda cards: None,
+    'New Round': lambda round_index: None,
+    'Small Blind': lambda player, given: None,
+    'Big Blind': lambda player, given: None,
+    'Player Raised': lambda player, raised_by: None,
+    'Player Called': lambda player, called: None,
+    'Player Checked': lambda player: None,
+    'Player Folded': lambda player: None,
+    'New Turn': lambda turn_name, table: None,
+    'Player Went All-In': lambda player, player_money: None,
+    'Declare Unfinished Winner': lambda winner, won: None,
+    'Public Show Cards': lambda player, player_cards: None,
+    'Declare Finished Winner': lambda winner, won, hand_name, hand_base, kicker: None}
 
     # accepts PlayerGroup as players and big_blinds
     def __init__(self, players: PlayerGroup, big_blind: int):
@@ -149,9 +160,8 @@ class PokerGame:
         self.button = players[0] # player that posts big blind (starts with the first one)
 
     @property
-    def deck(self):
-        shuffle(self.__deck)
-        return (card for card in self.__deck) # returns a generator
+    def all_players(self):
+        return self.players if not self.round else self.players + self.round.players
 
     def on_player_join(self, player):
         self.players.append(player)
@@ -185,6 +195,7 @@ class PokerGame:
         self.round = self.Round(type(self.players)(self.players.get_players_with_money()), self.button, self)
 
     class Round:
+        __deck = [[value, suit] for suit in range(4) for value in range(12)]
 
         def __init__(this, players, button, game_ref):
             this.self = game_ref # reference from this to self. Has to stay, because of public out
@@ -194,7 +205,7 @@ class PokerGame:
             this.button = button
 
             this.table = []
-            this.deck = this.self.deck
+            this.deck = this.deck_generator()
             this.turn_gen = this.turn_generator()
 
             this.current_player = this.button
@@ -210,16 +221,16 @@ class PokerGame:
                 player.cards = tuple(next(this.deck) for _ in range(2))
                 this.self.private_out(player, cards = player.cards, _id = 'Dealt Cards')
 
-            # set blinds in a lazy way
-            previous_player = this.players.previous_active_player_from(this.button)
-            this.process_action(previous_player, f"RAISE {this.self.big_blind // 2}")
-            previous_player.played_turn = False
-            this.self.public_out(player = previous_player.name, _id = 'Small Blind')
-            this.process_action(this.button, f"RAISE {this.self.big_blind // 2}") # BIG_BLIND = SMALL_BLIND raised by SMALL_BLIND
-            this.button.played_turn = False
-            this.self.public_out(player = this.button.name, _id = 'Big Blind')
 
-            this.process_after_input()
+            previous_player = this.players.previous_active_player_from(this.button)
+            this.player_added_to_pot(previous_player, this.self.big_blind // 2)
+            this.self.public_out(player = previous_player, given = previous_player.money_given[0], _id = 'Small Blind')
+            this.player_added_to_pot(this.button, this.self.big_blind)
+            this.self.public_out(player = this.button, given = this.button.money_given[0], _id = 'Big Blind')
+
+            # this should always be called externally, so it can return proper value, on which game continuation procceeding is based
+            # this is 'fixed' with passing an argument
+            this.process_after_input(check_required = True)
 
         # deletes itself from game attributes, resets everything and returns whether the game should be continued
         def close(this):
@@ -230,9 +241,16 @@ class PokerGame:
                 player.is_all_in = False
                 player.played_turn = False
                 player.stake = 0
+                player.cards = ()
 
             # 0 - new round should not begin; 1 - new round should begin
             return int(not this.exit_after_this)
+
+        # returns a shuffled deck generator
+        def deck_generator(this):
+            deck = __deck.copy()
+            shuffle(deck)
+            return (card for card in deck) # returns a generator
 
         # money other players have to call (or go all_in) to continiue to the next turn
         def get_money_to_call(this):
@@ -249,6 +267,76 @@ class PokerGame:
             active_money = [player.money_given[TABLE_DICT[len(this.table)]] for player in this.players if player.is_active()] or [float('Inf')] # so the second boolean expression works
             return len(set(active_money)) == 1 and active_money[0] >= max(all_ins_money)
 
+        # this is called whenever player puts money in the pot and processes whether he went all-in
+        def player_added_to_pot(this, player, money):
+            turn_index = TABLE_DICT[len(this.table)]
+
+            if 0 <= money < player.money:
+                player.money -= money # subtract player's money
+                player.money_given[turn_index] += money # add given money to attribute of money given during this turn
+
+            # if player raises more than he has it is considered as going all in
+            else:
+                this.self.public_out(player = player, player_money = player.money, _id = 'Player Went All-In')
+                player.money_given[turn_index] += player.money
+                player.money = 0
+                player.is_all_in = True
+
+        # process raise, call or fold and return true or false whether input is valid
+        # blinds is set to True only when function is called from Round __init__
+        def process_action(this, player, action):
+            action = action.lower()
+            if not (action in ['call', 'check', 'fold', 'all in'] or action.startswith('raise ')):
+                return False
+
+            turn_index = TABLE_DICT[len(this.table)]
+            money_to_call = this.get_money_to_call()
+            money_left_to_call = money_to_call - player.money_given[turn_index]
+
+            # process RAISE (input has to be "raise X", where X is a non negative integer, by which player raises the money_to_call)
+            if action.startswith('raise ') and len(action.split()) == 2 and this.isint(action.split()[1]):
+                raised_by = int(float(action.split()[1]))
+
+                if raised_by + money_to_call < player.money:
+                    if raised_by < this.self.big_blind: # if player didnt go all-in he should raise more than the BIG_BLIND
+                        this.self.public_out(_id = 'Raise Amount Error')
+                        return False
+                    this.self.public_out(player = player, raised = raised_by, _id = 'Player Raised')
+
+                this.player_added_to_pot(player, money_left_to_call + raised_by)
+                player.played_turn = True
+                return True
+
+            elif action == 'all in':
+                this.player_added_to_pot(player, player.money)
+                player.played_turn = True
+                return True
+
+            # process CALL (is the same as if player raised the others by 0)
+            elif action == 'call':
+                call_value = money_left_to_call if money_left_to_call < player.money else player.money
+                this.self.public_out(player = player, called = call_value , _id = 'Player Called')
+                this.player_added_to_pot(player, money_left_to_call)
+                player.played_turn = True
+                return True
+
+            # process check if there is no money to call (same as call only for instances when you call 0)
+            elif action == 'check' and money_left_to_call == 0:
+                this.self.public_out(player = player, _id = 'Player Checked')
+                this.player_added_to_pot(player, 0) # in case of all in situation which can happen only at the beginning of the round when player is forced to take action
+                player.played_turn = True
+                return True
+
+            # process FOLD
+            elif action == 'fold':
+                this.self.public_out(player = player, _id = 'Player Folded')
+                player.is_folded = True
+                player.played_turn = True
+                return True
+
+            # if none of the previous returns initializes input is invalid
+            return False
+
         # resets played_turn and money_in_pot for every player. Initializes new turn based how many cards were on the table
         def turn_generator(this):
             turn_dict = {3: 'FLOP', 4: 'TURN', 5: "RIVER"}
@@ -262,65 +350,19 @@ class PokerGame:
                 this.self.public_out(turn_name = turn_dict[len(this.table)], table = this.table, _id = 'New Turn')
                 yield True
 
-        # process raise, call or fold and return true or false whether input is valid
-        def process_action(this, player, action):
-            action = action.lower()
-            if not (action in ['call', 'check', 'fold', 'all in'] or action.startswith('raise ')):
-                return False
-
-            turn_index = TABLE_DICT[len(this.table)]
-            money_to_call = this.get_money_to_call()
-
-            # process RAISE (input has to be "raise X", where X is a non negative integer, by which player raises the money_to_call)
-            if action.startswith('raise ') and len(action.split()) == 2 and this.isint(action.split()[1]):
-                raised_by = int(float(action.split()[1]))
-
-                # money by which player raised + money left to call  - money already given this turn < all the money player has left
-                if 0 <= raised_by + money_to_call - player.money_given[turn_index] < player.money:
-                    player.money -= money_to_call + raised_by - player.money_given[turn_index] # subtract player's raised money
-                    player.money_given[turn_index] = money_to_call + raised_by # add given money to attribute (this is important with deal_winnings)
-                    player.played_turn = True
-
-                # if player raises more than he has it is considered as going all in
-                else:
-                    this.self.public_out(player = player.name, player_money = player.money, _id = 'Player Went All-In')
-                    player.money_given[turn_index] += player.money
-                    player.money = 0
-                    player.played_turn = True # doesnt matter as player will not be asked for input again (but it should be noted)
-                    player.is_all_in = True
-
-                return True
-
-            elif action == 'all in':
-                return this.process_action(player, "raise " + str(player.money))
-
-            # process CALL (is the same as if player raised the others by 0)
-            elif action == 'call':
-                return this.process_action(player, "raise 0")
-
-            # process check if there is no money to call (same as call only for instances when you call 0)
-            elif action == 'check' and money_to_call - player.money_given[turn_index] == 0:
-                return this.process_action(player, "raise 0")
-
-            # process FOLD
-            elif action == 'fold':
-                player.is_folded = True
-                player.played_turn = True
-                return True
-
-            # if none of the previous returns initializes input is invalid
-            return False
-
         # This continues the game and is called with player input
-        def process_after_input(this):
+        def process_after_input(this, check_required=False):
 
             # player won, round is over
             if len(this.players.get_not_folded_players()) <= 1:
                 this.deal_winnings()
                 return this.close()
 
+            # check_required tells this expression whether to end the round without player input or if player input is required, even if not needed
             # if everyone or everyone but one went all in and there is more than one player who hasnt folded input stage is over
             if len(this.players.get_active_players()) <= 1 and this.pot_is_equal() and len(this.players.get_not_folded_players()) >= 2:
+                if check_required:
+                    return None
                 for _ in range(3 - TABLE_DICT[len(this.table)]): # user input not needed, so turns continue within this same function
                     next(this.turn_gen)
                 this.deal_winnings()
@@ -338,10 +380,8 @@ class PokerGame:
 
             this.current_player = this.players.next_active_player_from(this.current_player)
             to_call = this.get_money_to_call() - this.current_player.money_given[TABLE_DICT[len(this.table)]]
-            to_call_str = str(to_call) + " to call" if to_call != 0 else ''
+            to_call_str = str(to_call) + " to call" if to_call > 0 else ''
             this.self.public_out(this.current_player.name + "\n" + to_call_str)
-            return None
-
 
         def deal_winnings(this):
 
@@ -353,7 +393,7 @@ class PokerGame:
             if len(this.players.get_not_folded_players()) == 1:
                 winner = this.players.get_not_folded_players()[0]
                 winner.money += sum(this.get_pot_size())
-                this.self.public_out(winner = winner.name, won = sum(this.get_pot_size()), _id = 'Declare Unfinished Winner')
+                this.self.public_out(winner = winner, won = sum(this.get_pot_size()), _id = 'Declare Unfinished Winner')
                 return None
 
             # this matters only for later use of this function
@@ -361,7 +401,7 @@ class PokerGame:
                 player.stake = sum(player.money_given)
 
             # arranges players who have gone all in by their pot contribution size (from smallest to largest)
-            all_ins_sorted = [player for _, player in sorted([[sum(player.money_given), player] for player in this.players if player.is_all_in])]
+            all_ins_sorted = [player for _, player in sorted([[sum(player.money_given), player] for player in this.players if player.is_all_in and not player.is_folded])]
             not_all_in_active = [player for player in this.players if player.is_active()] # is_active covers people not all_in, wwith money and not folded
             # players from smallest to largest stake in pot (not all_in's stake doesnt matter as long as they are last)
             active_and_sorted_all_ins = type(this.players)(all_ins_sorted + not_all_in_active)
@@ -372,10 +412,10 @@ class PokerGame:
 
             # show players' hands
             for stayed_in in active_and_sorted_all_ins:
-                this.self.public_out(player = stayed_in.name, player_cards = stayed_in.cards, _id = 'Public Show Cards')
+                this.self.public_out(player = stayed_in, player_cards = stayed_in.cards, _id = 'Public Show Cards')
 
             for stayed_in in active_and_sorted_all_ins: # here the loop order (sorting of active_and_sorted_all_ins) is mucho importante
-                winning_player_names = Hand.max(player_hands)
+                winning_player_names = Hand.winners(player_hands)
                 winning_players = type(this.players)([active_and_sorted_all_ins[player_name] for player_name in winning_player_names])
 
                 if stayed_in.name in winning_player_names:
@@ -405,12 +445,11 @@ class PokerGame:
                             subgame_participants = [player.name for player in active_and_sorted_all_ins if player.stake >= winning_split.stake] # subgame participants
                             kicker = Hand.get_kicker([hand for hand in static_hands if hand.name in subgame_participants])
                             winner_hand = [hand for hand in player_hands if hand.name == winning_split.name][0]
-                            this.self.public_out(winner = winning_split.name, won = player_winnings, hand_name = winner_hand.best_hand_name,
-                            hand_base = winner_hand.hand_base, kicker = kicker, _id = 'Declare Finished Winner')
+                            this.self.public_out(winner = winning_split, won = round(player_winnings), hand_name = winner_hand.top_hand_name,
+                            hand_base = winner_hand.hand_base_cards, kicker = kicker, _id = 'Declare Finished Winner')
 
                 # remove hands of players with lower stakes, as they are not competing in the same stake range (they already collected their bet equivalence if won)
                 player_hands = [player_hand for player_hand in player_hands if player_hand.name != stayed_in.name]
-
 
         @staticmethod
         def isint(string):

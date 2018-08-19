@@ -7,11 +7,11 @@ class FileMethods:
     @classmethod
     def create_datafile(cls, path, base_data):
         Path(path).touch()
-        with open(path, 'w') as raw:
+        with open(path, 'w', encoding='UTF-8') as raw:
             print(dumps(base_data), file=raw)
 
     @classmethod
-    def fetch_database_data(cls, path) -> dict:
+    def fetch_database_data(cls, path: str) -> dict:
         with open(path, 'r') as raw:
             data_dict = load(raw)
         return data_dict
@@ -19,8 +19,8 @@ class FileMethods:
     @classmethod
     def send_to_database(cls, path, data_dict: dict):
         data_to_save = {**cls.fetch_database_data(path), **data_dict}
-        with open(path, 'w') as raw:
-            print(dumps(data_to_save), file=raw)
+        with open(path, 'w', encoding='UTF-8') as _file:
+            print(dumps(data_to_save), file = _file)
 
 class TimeMethods:
 

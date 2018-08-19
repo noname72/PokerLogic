@@ -1,4 +1,4 @@
-from lib.GameObjects import PlayerGroup, Player, PokerGame
+from lib.PokerGameObjects import PlayerGroup, Player, PokerGame
 
 PLAYERS = ['Nejc', 'Tjasa', 'Gorazd']
 
@@ -20,7 +20,7 @@ class TermPokerGame(PokerGame):
 
 
 if __name__ == '__main__':
-    game = TermPokerGame(PlayerGroup([Player(player, STARTING_MONEY) for player in PLAYERS]), BIG_BLIND)
+    game = TermPokerGame(PlayerGroup([Player(player, STARTING_MONEY // (i + 1)) for i, player in enumerate(PLAYERS)]), BIG_BLIND)
     game.new_round()
     while game.round:
         action = input(game.round.current_player.name + ': ')

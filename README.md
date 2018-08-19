@@ -12,7 +12,7 @@ and function that gathers input controlling the instances created from PokerGame
 
 ### Messinger
 One application of the Library included is made in PlayMessinger.py with a help of fbchat module.
-It enables a user to log into messinger account, which has the function of a dealer.
+It enables a user to log into a messinger account, which has the functions of a dealer.
 Any group thread that dealer is included in can be used as a poker table, with specific commands.
 The exact commands are included in the documentation.
 
@@ -22,7 +22,7 @@ This is a simple use of the library where poker is played on the terminal.
 ```python
 from lib.PokerGameObject import PlayerGroup, Player, PokerGame
 
-PLAYERS = ['Player1', 'Player2', 'Player3', ... , 'PlayerN'] # N <= 9
+PLAYERS = ['Player1', 'Player2', 'Player3', ... , 'PlayerN'] # 2 <= N <= 9
 player_group = PlayerGroup([Player(PLAYER) for PLAYER in PLAYERS])
 game = PokerGame(player_group)
 

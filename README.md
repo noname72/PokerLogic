@@ -19,7 +19,7 @@ The exact commands are included in the documentation.
 
 ## Code Example
 This is a simple use of the library where poker is played on the terminal.
-'''python
+```python
 from lib.PokerGameObject import PlayerGroup, Player, PokerGame
 
 PLAYERS = ['Player1', 'Player2', 'Player3', ... , 'PlayerN'] \# N <= 9
@@ -32,7 +32,7 @@ while True:
     game_status = game.round.process_after_input() \# returns 0 if game should be ended and 1 if game should continue
     if game_status is 1 and game.is_ok():
       game.new_round()
-'''
+```
 
 
 ## Tests

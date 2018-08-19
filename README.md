@@ -5,15 +5,15 @@ This is meant to be a project, enabling poker to be played at multiple locations
 
 Includes a library with classes that help with hand parsing, general poker structure and game continuation.
 The library's main function is for its main object PokerGame to be baseclassed, IO overriden with methods that define a specific out,
-and function that gathers input controlling the instances created from PokerGameSubclass as an external source.
+and function that gathers input, controlling the instances created from PokerGameSubclass as an external source.
 
 
 ## Library applications
 
 ### Messinger
 One application of the Library included is made in PlayMessinger.py with a help of fbchat module.
-It enables a user to log into a messinger account, which has the functions of a dealer.
-Any group thread that dealer is included in can be used as a poker table, with specific commands.
+It enables a user to log into a messinger account, which comes equipped with functions of a dealer.
+Any group thread that the dealer is included in can be used as a poker table, with specific commands.
 The exact commands are included in the documentation.
 
 

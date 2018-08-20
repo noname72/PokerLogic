@@ -20,11 +20,10 @@ MONEY_ADD_PER_PERIOD = 100 # how much a player gets if he requests for money
 VALUES = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
 SUITS = ['♠', '♣️', '♦️', '♥️']
 
-MESSAGE_STATEMENTS = [
-'call', 'fold', 'check',
-'show money', 'gimme moneyz',
-'user::refill', 'user::money',
-'game::lastround', 'game::cancellastround', 'game::activate']
+MID_GAME_STATEMENTS = ['call', 'fold', 'check']
+PRIVATE_STATEMETNS = ['show money', 'gimme moneyz']
+GAME_MANIPULATION_STATEMENTS = ['game::lastround', 'game::activate', 'user::refill', 'user::withdraw', 'user::money']
+ALL_STATEMENTS = MID_GAME_STATEMENTS + PRIVATE_STATEMETNS + GAME_MANIPULATION_STATEMENTS
 
 class Dealer(Client):
 
@@ -36,17 +35,18 @@ class Dealer(Client):
         if thread_id in self.games:
             game = self.games[thread_id]
             for added_id in added_ids:
-                assert added_id not in [player.fb_id for player in game.players] and added_id != self.uid
+                if added_id in [player.fb_id for player in game.all_players] or added_id == self.uid:
+                    continue
                 user_info = self.getUserInfo(added_in)
                 game.on_player_join(FbPlayer(user_info.name, user_info.uid, game.table_id))
 
     def onPersonRemoved(self, removed_id, author_id, thread_id, **kwargs):
         if thread_id in self.games: # if a game isnt played on the table there isnt anything to do
             if removed_id == self.uid: # if a dealer is removed, remove game on that table from games
-                ...
-                ...
+                txt = FileMethods.fetch_database_txt(Path('PulpFictionQuote.txt'))
+                self.sendMessage(txt, thread_id = author_id)
                 self.remove_game(thread_id) # this is where game is removed and ended forcibly (SHOULDN'T HAPPEN)
-
+                ...
             elif author_id != removed_id: # player only can remove himself
                 self.addUsersToGroup([removed_id], thread_id = thread_id)
             else:
@@ -65,39 +65,45 @@ class Dealer(Client):
         game = self.games[thread_id] if thread_id in self.games else None
 
         # messages sent from a group (game manipulation messages)
-        if kwargs['thread_type'] == ThreadType.GROUP and message in ['game::activate', 'user::refill', 'user::money', 'game::lastround', 'game::cancellastround']:
+        if kwargs['thread_type'] == ThreadType.GROUP and message in GAME_MANIPULATION_STATEMENTS:
             if message == 'game::activate':
                 if not game:
                     self.add_game(thread_id)
                 if not self.start_round(thread_id):
                     self.sendMessage("A new round couldn't be started", thread_id = thread_id, thread_type = ThreadType.GROUP)
 
-            elif message in ['game::lastround', 'game::cancellastround']:
-                game.round.exit_after_this = not game.round.exit_after_this
-                _send = 'game will end after this round' if game.round.exit_after_this else 'game will continue'
-                self.sendMessage(_send, thread_id = thread_id, thread_type = ThreadType.GROUP)
+            # from now on everything requires for a game to be played and that a player in that game wrote the message
+            player = game.all_players.get_player_by_attr('fb_id', author_id) if game else None
+            if not player:
+                return None
 
+            if message == 'game::lastround':
+                if game.round:
+                    game.round.exit_after_this = not game.round.exit_after_this
+                    _send = 'game will end after this round' if game.round.exit_after_this else 'game will continue'
+                    self.sendMessage(_send, thread_id = thread_id, thread_type = ThreadType.GROUP)
+
+            # player wants to refill his money on the playing table
             elif message == 'user::refill':
-                player = game.players.get_player_by_attr('fb_id', author_id) if game else None
-                money_filled = player.refill_money() if player else None
-                if player and money_filled is not False:
-                    self.sendMessage('Money successfully refilled by ' + str(money_filled) + ' to ' + str(player.money), table_id = thread_id, thread_id = ThreadType.GROUP)
+                money_filled = player.refill_money()
+                if money_filled is not False:
+                    self.sendMessage('Money successfully refilled by ' + str(money_filled) + ' to ' + str(player.money), thread_id = thread_id, thread_type = ThreadType.GROUP)
+
+            # player wants to get all money out of the table
+            elif message == 'user::withdraw':
+                money = player.money
+                player.withdraw_money()
+                self.sendMessage(str(money) + ' successfully withdrawn', thread_id = thread_id, thread_type = ThreadType.GROUP)
 
             # player requested to see the money in a specific game he is playing (THIS SHOULD BE GONE until a better solution arises)
             elif message == 'user::money':
-                if not game:
-                    return None
-                player = game.all_players.get_player_by_attr('fb_id', author_id)
-                return self.sendMessage('You Have ' + str(player.money), thread_id = thread_id, thread_type = ThreadType.GROUP) if player else None
+                self.sendMessage('You Have ' + str(player.money), thread_id = thread_id, thread_type = ThreadType.GROUP)
 
         # message within active round was sent (game continuation)
         elif game and game.round:
-            author_player = game.round.players.get_player_by_attr('fb_id', author_id)
-            if not author_player: # player has to be in round for the following processes
-                return None
 
             # message was sent from current player in game round
-            elif author_id == game.round.current_player.fb_id and game.round.process_action(author_player, message):
+            if author_id == game.round.current_player.fb_id and game.round.process_action(message):
                 status = game.round.process_after_input()
 
                 # this is where players are added or removed for the next round
@@ -106,14 +112,14 @@ class Dealer(Client):
                     game.new_round()
 
         # messages sent privately to the dealer (data requests / data modification requests)
-        elif kwargs['thread_type'] == ThreadType.USER:
+        elif kwargs['thread_type'] == ThreadType.USER and message in PRIVATE_STATEMETNS:
             test_path = [path for path in Path(DATABASE).iterdir() if path.suffix == '.json' and path.name[:-5] == author_id]
             assert len(test_path) <= 1
 
             # if player is inside the database
             if test_path:
                 confirmed_path = test_path[0]
-                data = FileMethods.fetch_database_data(confirmed_path)
+                data = FileMethods.fetch_database_json(confirmed_path)
 
                 # player requested to see the money from the database
                 if message.lower() == 'show money':
@@ -169,40 +175,43 @@ class FbPlayer(Player):
         self.table_id = table_id
 
         if self.data_path.is_file():
-            file_data = FileMethods.fetch_database_data(self.data_path)
+            file_data = FileMethods.fetch_database_json(self.data_path)
             money = TABLE_MONEY if file_data['money'] >= TABLE_MONEY else available_money['money']
             file_data['money'] -= money
             file_data['table_money'][self.table_id] = money
             FileMethods.send_to_database(self.data_path, file_data)
         else: # new player
             money = TABLE_MONEY
-            FileMethods.create_datafile(self.data_path, self.base_datafile)
+            FileMethods.create_datafile(self.data_path, self.get_base_datafile())
 
         super().__init__(self.name, money)
 
     @property
-    def base_datafile(self):
+    def money(self):
+        return self.__money
+
+    @money.setter
+    def money(self, value):
+        self.__money = value
+        data = FileMethods.fetch_database_json(self.data_path)
+        data['table_money'][self.table_id] = value
+        FileMethods.send_to_database(self.data_path, data)
+
+    def __eq__(self, other):
+        return self.fb_id == other.fb_id
+
+    def get_base_datafile(self):
         return dict(
         name = self.name,
         money = PLAYER_STARTING_MONEY - TABLE_MONEY,
         table_money = {self.table_id: TABLE_MONEY},
         timestamp = TimeMethods.formatted_timestamp())
 
-    def __setattr__(self, attr, value):
-        if attr == 'money':
-            data = FileMethods.fetch_database_data(self.data_path)
-            data['table_money'][self.table_id] = value
-            FileMethods.send_to_database(self.data_path, data)
-        super().__setattr__(attr, value)
-
-    def __eq__(self, other):
-        return self.fb_id == other.fb_id
-
     def refill_money(self):
         if self.money >= TABLE_MONEY:
             return False
 
-        file_data = FileMethods.fetch_database_data(self.data_path)
+        file_data = FileMethods.fetch_database_json(self.data_path)
         __money = file_data['money']
         money_to_fill = TABLE_MONEY - self.money
 
@@ -215,9 +224,15 @@ class FbPlayer(Player):
             file_data['money'] = 0
             return __money
 
+    def withdraw_money(self):
+        file_data = FileMethods.fetch_database_json(self.data_path)
+        file_data['money'] += file_data['table_money'][self.table_id]
+        file_data['table_money'][self.table_id] = 0
+        self.money = 0
+
     # called when player leaves the table (or game ends)
     def resolve(self):
-        file_data = FileMethods.fetch_database_data(self.data_path)
+        file_data = FileMethods.fetch_database_json(self.data_path)
         file_data['money'] += file_data['table_money'][self.table_id]
         file_data['table_money'].pop(self.table_id)
         FileMethods.send_to_database(self.data_path, file_data)
@@ -278,11 +293,11 @@ class FbPokerGame(PokerGame):
 # this has to be done before every game
 def scrape_leftover_money():
     for file in Path(DATABASE).iterdir():
-        file_data = FileMethods.fetch_database_data(file)
-        money_fragment = sum(file_data['table_money'][table] for table in file_data['table_money'])
-        file_data['money'] += money_fragment
-        file_data['table_money'] = {}
-        FileMethods.send_to_database(file, file_data)
+        if file.suffix == '.json':
+            file_data = FileMethods.fetch_database_json(file)
+            file_data['money'] += sum(file_data['table_money'][table] for table in file_data['table_money'])
+            file_data['table_money'] = {}
+            FileMethods.send_to_database(file, file_data)
 
 scrape_leftover_money()
 

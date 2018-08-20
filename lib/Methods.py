@@ -4,21 +4,27 @@ from pathlib import Path
 
 class FileMethods:
 
-    @classmethod
-    def create_datafile(cls, path, base_data):
+    @staticmethod
+    def create_datafile(path, base_data):
         Path(path).touch()
         with open(path, 'w', encoding='UTF-8') as raw:
             print(dumps(base_data), file=raw)
 
-    @classmethod
-    def fetch_database_data(cls, path: str) -> dict:
+    @staticmethod
+    def fetch_database_txt(path) -> str:
+        with open(path, 'r', encoding='UTF-8') as file:
+            txt_list = file.readlines()
+        return ''.join(txt_list)
+
+    @staticmethod
+    def fetch_database_json(path) -> dict:
         with open(path, 'r') as raw:
             data_dict = load(raw)
         return data_dict
 
     @classmethod
     def send_to_database(cls, path, data_dict: dict):
-        data_to_save = {**cls.fetch_database_data(path), **data_dict}
+        data_to_save = {**cls.fetch_database_json(path), **data_dict}
         with open(path, 'w', encoding='UTF-8') as _file:
             print(dumps(data_to_save), file = _file)
 

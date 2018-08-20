@@ -284,54 +284,54 @@ class PokerGame:
 
         # process raise, call or fold and return true or false whether input is valid
         # blinds is set to True only when function is called from Round __init__
-        def process_action(this, player, action):
+        def process_action(this, action):
             action = action.lower()
             if not (action in ['call', 'check', 'fold', 'all in'] or action.startswith('raise ')):
                 return False
 
             turn_index = TABLE_DICT[len(this.table)]
             money_to_call = this.get_money_to_call()
-            money_left_to_call = money_to_call - player.money_given[turn_index]
+            money_left_to_call = money_to_call - this.current_player.money_given[turn_index]
 
             # process RAISE (input has to be "raise X", where X is a non negative integer, by which player raises the money_to_call)
             if action.startswith('raise ') and len(action.split()) == 2 and this.isint(action.split()[1]):
                 raised_by = int(float(action.split()[1]))
 
-                if raised_by + money_to_call < player.money:
+                if raised_by + money_to_call < this.current_player.money:
                     if raised_by < this.self.big_blind: # if player didnt go all-in he should raise more than the BIG_BLIND
                         this.self.public_out(_id = 'Raise Amount Error')
                         return False
-                    this.self.public_out(player = player, raised = raised_by, _id = 'Player Raised')
+                    this.self.public_out(player = this.current_player, raised = raised_by, _id = 'Player Raised')
 
-                this.player_added_to_pot(player, money_left_to_call + raised_by)
-                player.played_turn = True
+                this.player_added_to_pot(this.current_player, money_left_to_call + raised_by)
+                this.current_player.played_turn = True
                 return True
 
             elif action == 'all in':
-                this.player_added_to_pot(player, player.money)
-                player.played_turn = True
+                this.player_added_to_pot(this.current_player, this.current_player.money)
+                this.current_player.played_turn = True
                 return True
 
             # process CALL (is the same as if player raised the others by 0)
             elif action == 'call':
-                call_value = money_left_to_call if money_left_to_call < player.money else player.money
-                this.self.public_out(player = player, called = call_value , _id = 'Player Called')
-                this.player_added_to_pot(player, money_left_to_call)
-                player.played_turn = True
+                call_value = money_left_to_call if money_left_to_call < this.current_player.money else this.current_player.money
+                this.self.public_out(player = this.current_player, called = call_value , _id = 'Player Called')
+                this.player_added_to_pot(this.current_player, money_left_to_call)
+                this.current_player.played_turn = True
                 return True
 
             # process check if there is no money to call (same as call only for instances when you call 0)
             elif action == 'check' and money_left_to_call == 0:
-                this.self.public_out(player = player, _id = 'Player Checked')
-                this.player_added_to_pot(player, 0) # in case of all in situation which can happen only at the beginning of the round when player is forced to take action
-                player.played_turn = True
+                this.self.public_out(player = this.current_player, _id = 'Player Checked')
+                this.player_added_to_pot(this.current_player, 0) # in case of all in situation which can happen only at the beginning of the round when player is forced to take action
+                this.current_player.played_turn = True
                 return True
 
             # process FOLD
             elif action == 'fold':
-                this.self.public_out(player = player, _id = 'Player Folded')
-                player.is_folded = True
-                player.played_turn = True
+                this.self.public_out(player = this.current_player, _id = 'Player Folded')
+                this.current_player.is_folded = True
+                this.current_player.played_turn = True
                 return True
 
             # if none of the previous returns initializes input is invalid

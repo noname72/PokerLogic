@@ -43,10 +43,10 @@ class Dealer(Client):
     def onPersonRemoved(self, removed_id, author_id, thread_id, **kwargs):
         if thread_id in self.games: # if a game isnt played on the table there isnt anything to do
             if removed_id == self.uid: # if a dealer is removed, remove game on that table from games
-                txt = FileMethods.fetch_database_txt(Path('PulpFictionQuote.txt'))
+                txt = FileMethods.fetch_database_txt(Path('quotes') / 'PulpFiction.txt')
                 self.sendMessage(txt, thread_id = author_id)
                 self.remove_game(thread_id) # this is where game is removed and ended forcibly (SHOULDN'T HAPPEN)
-                ...
+
             elif author_id != removed_id: # player only can remove himself
                 self.addUsersToGroup([removed_id], thread_id = thread_id)
             else:
@@ -59,7 +59,7 @@ class Dealer(Client):
     # processing input from players and saving it into glob_message
     def onMessage(self, author_id, message, thread_id, **kwargs):
         message = message.lower()
-        if author_id == self.uid or (message not in MESSAGE_STATEMENTS and not message.startswith('raise ')):
+        if author_id == self.uid or (message not in ALL_STATEMENTS and not message.startswith('raise ')):
             return None
 
         game = self.games[thread_id] if thread_id in self.games else None
@@ -89,11 +89,17 @@ class Dealer(Client):
                 if money_filled is not False:
                     self.sendMessage('Money successfully refilled by ' + str(money_filled) + ' to ' + str(player.money), thread_id = thread_id, thread_type = ThreadType.GROUP)
 
-            # player wants to get all money out of the table
+            # player wants to get all money out of the table (player has to be folded or rounds not played)
             elif message == 'user::withdraw':
-                money = player.money
-                player.withdraw_money()
-                self.sendMessage(str(money) + ' successfully withdrawn', thread_id = thread_id, thread_type = ThreadType.GROUP)
+                if (not game.round or player.is_folded) and player.money > 0:
+                    money = player.money
+                    player.withdraw_money()
+                    _send = str(money) + ' successfully withdrawn'
+                elif player.money == 0:
+                    _send = 'You have no money on this table'
+                else:
+                    _send = 'Your hand has to be folded or no rounds active in orded for you to whitdraw money, so theres no funny bussiness'
+                self.sendMessage(_send, thread_id = thread_id, thread_type = ThreadType.GROUP)
 
             # player requested to see the money in a specific game he is playing (THIS SHOULD BE GONE until a better solution arises)
             elif message == 'user::money':
@@ -103,13 +109,8 @@ class Dealer(Client):
         elif game and game.round:
 
             # message was sent from current player in game round
-            if author_id == game.round.current_player.fb_id and game.round.process_action(message):
-                status = game.round.process_after_input()
-
-                # this is where players are added or removed for the next round
-                # round ends, we check if conditions for another round are met
-                if status is 1 and game.is_ok():
-                    game.new_round()
+            if author_id == game.round.current_player.fb_id:
+                game.round.process_action(message) # game continuation
 
         # messages sent privately to the dealer (data requests / data modification requests)
         elif kwargs['thread_type'] == ThreadType.USER and message in PRIVATE_STATEMETNS:
@@ -228,6 +229,7 @@ class FbPlayer(Player):
         file_data = FileMethods.fetch_database_json(self.data_path)
         file_data['money'] += file_data['table_money'][self.table_id]
         file_data['table_money'][self.table_id] = 0
+        FileMethoods.send_to_database(self.data_path, file_data)
         self.money = 0
 
     # called when player leaves the table (or game ends)

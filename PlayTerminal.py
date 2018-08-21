@@ -24,7 +24,4 @@ if __name__ == '__main__':
     game.new_round()
     while game.round:
         action = input(game.round.current_player.name + ': ')
-        if game.round.process_action(action):
-            game_status = game.round.process_after_input()
-            if game_status is 1 and game.is_ok():
-                game.new_round()
+        game.round.process_action(action)

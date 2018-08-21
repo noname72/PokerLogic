@@ -1,5 +1,6 @@
-from numpy.random import shuffle
+from typing import List
 from itertools import cycle
+from numpy.random import shuffle
 try:
     from PokerHandParse import HandParser
 except ModuleNotFoundError:
@@ -195,11 +196,11 @@ class PokerGame:
         self.round = self.Round(type(self.players)(self.players.get_players_with_money()), self.button, self)
 
     class Round:
-        __deck = [[value, suit] for suit in range(4) for value in range(12)]
+        __deck = [[value, suit] for suit in range(4) for value in range(13)]
 
         def __init__(this, players, button, game_ref):
             this.self = game_ref # reference from this to self. Has to stay, because of public out
-            this.exit_after_this = False
+            this.exit_after_this = False # a sign that can be toggled from an outside source signaling that round  will end after the current round is finished
 
             this.players = players
             this.button = button
@@ -230,7 +231,7 @@ class PokerGame:
 
             # this should always be called externally, so it can return proper value, on which game continuation procceeding is based
             # this is 'fixed' with passing an argument
-            this.process_after_input(check_required = True)
+            this.process_after_input()
 
         # deletes itself from game attributes, resets everything and returns whether the game should be continued
         def close(this):
@@ -243,12 +244,13 @@ class PokerGame:
                 player.stake = 0
                 player.cards = ()
 
-            # 0 - new round should not begin; 1 - new round should begin
-            return int(not this.exit_after_this)
+            # if game wasnt scheduled to end after this round from an external source and game is ok to continue, then trigger a new round
+            if not this.exit_after_this and this.self.is_ok():
+                this.self.new_round()
 
         # returns a shuffled deck generator
         def deck_generator(this):
-            deck = __deck.copy()
+            deck = this.__deck.copy()
             shuffle(deck)
             return (card for card in deck) # returns a generator
 
@@ -305,11 +307,13 @@ class PokerGame:
 
                 this.player_added_to_pot(this.current_player, money_left_to_call + raised_by)
                 this.current_player.played_turn = True
+                this.process_after_input()
                 return True
 
             elif action == 'all in':
                 this.player_added_to_pot(this.current_player, this.current_player.money)
                 this.current_player.played_turn = True
+                this.process_after_input()
                 return True
 
             # process CALL (is the same as if player raised the others by 0)
@@ -318,6 +322,7 @@ class PokerGame:
                 this.self.public_out(player = this.current_player, called = call_value , _id = 'Player Called')
                 this.player_added_to_pot(this.current_player, money_left_to_call)
                 this.current_player.played_turn = True
+                this.process_after_input()
                 return True
 
             # process check if there is no money to call (same as call only for instances when you call 0)
@@ -325,6 +330,7 @@ class PokerGame:
                 this.self.public_out(player = this.current_player, _id = 'Player Checked')
                 this.player_added_to_pot(this.current_player, 0) # in case of all in situation which can happen only at the beginning of the round when player is forced to take action
                 this.current_player.played_turn = True
+                this.process_after_input()
                 return True
 
             # process FOLD
@@ -332,6 +338,7 @@ class PokerGame:
                 this.self.public_out(player = this.current_player, _id = 'Player Folded')
                 this.current_player.is_folded = True
                 this.current_player.played_turn = True
+                this.process_after_input()
                 return True
 
             # if none of the previous returns initializes input is invalid
@@ -351,7 +358,7 @@ class PokerGame:
                 yield True
 
         # This continues the game and is called with player input
-        def process_after_input(this, check_required=False):
+        def process_after_input(this):
 
             # player won, round is over
             if len(this.players.get_not_folded_players()) <= 1:
@@ -361,8 +368,6 @@ class PokerGame:
             # check_required tells this expression whether to end the round without player input or if player input is required, even if not needed
             # if everyone or everyone but one went all in and there is more than one player who hasnt folded input stage is over
             if len(this.players.get_active_players()) <= 1 and this.pot_is_equal() and len(this.players.get_not_folded_players()) >= 2:
-                if check_required:
-                    return None
                 for _ in range(3 - TABLE_DICT[len(this.table)]): # user input not needed, so turns continue within this same function
                     next(this.turn_gen)
                 this.deal_winnings()

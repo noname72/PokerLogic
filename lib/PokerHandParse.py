@@ -33,7 +33,12 @@ class HandParser:
         return str([[value, suit] for value, suit in self.cards])
 
     def __eq__(self, other):
-        return not self > other and not self < other
+        if HANDS.index(self.top_hand_name) != HANDS.index(pther.top_hand_name):
+            return False
+        for s_card, o_card in zip(self.top_cards, other.top_cards):
+            if s_card[0] != o_card[0]:
+                return False
+        return True
 
     def __gt__(self, other):
         if HANDS.index(self.top_hand_name) > HANDS.index(other.top_hand_name):

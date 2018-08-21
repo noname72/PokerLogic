@@ -1,4 +1,3 @@
-from typing import List
 from itertools import cycle
 from numpy.random import shuffle
 try:

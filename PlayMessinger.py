@@ -71,7 +71,8 @@ class Dealer(Client):
                     self.add_game(thread_id)
                 if not self.start_round(thread_id):
                     self.sendMessage("A new round couldn't be started", thread_id = thread_id, thread_type = ThreadType.GROUP)
-
+                return None
+                
             # from now on everything requires for a game to be played and that a player in that game wrote the message
             player = game.all_players.get_player_by_attr('fb_id', author_id) if game else None
             if not player:
@@ -117,35 +118,36 @@ class Dealer(Client):
             test_path = [path for path in Path(DATABASE).iterdir() if path.suffix == '.json' and path.name[:-5] == author_id]
             assert len(test_path) <= 1
 
-            # if player is inside the database
-            if test_path:
-                confirmed_path = test_path[0]
-                data = FileMethods.fetch_database_json(confirmed_path)
+            # if the author is not inside the database notify the author and end the execution
+            if not test_path:
+                return self.sendMessage('You are not in the database', thread_id = thread_id)
 
-                # player requested to see the money from the database
-                if message.lower() == 'show money':
-                    self.sendMessage(f"You have {data['money']} left", thread_id = author_id, thread_type = ThreadType.USER)
+            confirmed_path = test_path[0]
+            data = FileMethods.fetch_database_json(confirmed_path)
 
-                elif message.lower() == 'gimme moneyz':
-                    timestamp = TimeMethods.formatted_timestamp()
-                    diff = TimeMethods.get_time_diff(timestamp, data['timestamp'])
+            # player requested to see the money from the database
+            if message.lower() == 'show money':
+                self.sendMessage(f"You have {data['money']} left", thread_id = author_id, thread_type = ThreadType.USER)
 
-                    if diff['days'] or diff['hours'] >= MONEY_WAITING_PERIOD:
-                        data['timestamp'] = timestamp
-                        data['money'] += MONEY_ADD_PER_PERIOD
-                        FileMethods.send_to_database(confirmed_path, data)
-                        send = self.sendMessage(str(MONEY_ADD_PER_PERIOD) + " successfully added", thread_id = author_id, thread_type = ThreadType.USER)
-                    else:
-                        remainder = TimeMethods.get_time_remainder(timestamp, data['timestamp'], MONEY_WAITING_PERIOD)
-                        to_wait = ', '.join([str(remainder[timeframe]) + ' ' + timeframe for timeframe in remainder if remainder[timeframe]])
-                        self.sendMessage("Money Can Be Requested in " + to_wait, thread_id = author_id, thread_type = ThreadType.USER)
+            elif message.lower() == 'gimme moneyz':
+                timestamp = TimeMethods.formatted_timestamp()
+                diff = TimeMethods.get_time_diff(timestamp, data['timestamp'])
+
+                if diff['days'] or diff['hours'] >= MONEY_WAITING_PERIOD:
+                    data['timestamp'] = timestamp
+                    data['money'] += MONEY_ADD_PER_PERIOD
+                    FileMethods.send_to_database(confirmed_path, data)
+                    self.sendMessage(str(MONEY_ADD_PER_PERIOD) + " successfully added", thread_id = thread_id)
+                else:
+                    remainder = TimeMethods.get_time_remainder(timestamp, data['timestamp'], MONEY_WAITING_PERIOD)
+                    to_wait = ', '.join([str(remainder[timeframe]) + ' ' + timeframe for timeframe in remainder if remainder[timeframe]])
+                    self.sendMessage("Money Can Be Requested in " + to_wait, thread_id = thread_id)
 
     def add_game(self, table_id, big_blind = BIG_BLIND):
         if table_id not in self.games:
             self.games[table_id] = FbPokerGame(PlayerGroup(self.fetch_players_on_table(table_id)), big_blind, table_id)
             return True
-        else:
-            return False
+        return False
 
     # this happens ONLY when the game is forcibly ended by removing the dealer mid-game
     def remove_game(self, table_id):
@@ -157,8 +159,7 @@ class Dealer(Client):
         if not game.round and game.is_ok():
             game.new_round()
             return True
-        else:
-            return False
+        return False
 
     def fetch_uids_on_table(self, table_id) -> set: # without dealer (dealer on the table is trivial)
         return {uid for uid in self.fetchGroupInfo(table_id)[table_id].participants if uid != self.uid} # set of user ids

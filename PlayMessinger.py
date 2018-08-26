@@ -1,3 +1,5 @@
+# originaly made with fbchat Version 1.3.9
+
 from pathlib import Path
 from fbchat import Client
 from fbchat.models import *
@@ -20,10 +22,25 @@ MONEY_ADD_PER_PERIOD = 100 # how much a player gets if he requests for money
 VALUES = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
 SUITS = ['♠', '♣️', '♦️', '♥️']
 
-MID_GAME_STATEMENTS = ['call', 'fold', 'check']
-PRIVATE_STATEMETNS = ['show money', 'gimme moneyz']
-GAME_MANIPULATION_STATEMENTS = ['game::lastround', 'game::activate', 'user::refill', 'user::withdraw', 'user::money']
-ALL_STATEMENTS = MID_GAME_STATEMENTS + PRIVATE_STATEMETNS + GAME_MANIPULATION_STATEMENTS
+# valid statements that a dealer receives from player (they should all be lowercase)
+GAME_START = '::init' # starts game and/or round if conditions for round are met
+TOGGLE_LAST_ROUND = '::lastround' # toggles the round being played
+SHOW_USER_TABLE_MONEY = '::money' # shows how much money user has on the table
+REFILL_USER_TABLE_MONEY = '::refill' # refills user table money to TABLE_MONEY (takes it from his main money)
+WITHDRAW_USER_TABLE_MONEY = '::withdraw' # takes all the money from player's table and adds it to his main money
+
+SHOW_USER_MONEY = 'show money' # shows player main money
+REQUEST_FOR_MONEY = 'gimme moneyz' # requests for MONEY_ADD_PER_PERIOD
+
+CALL = 'call'
+FOLD = 'fold'
+CHECK = 'check'
+ALL_IN = 'all in'
+
+GAME_MANIPULATION_STATEMENTS = [GAME_START, TOGGLE_LAST_ROUND, SHOW_USER_TABLE_MONEY, REFILL_USER_TABLE_MONEY, WITHDRAW_USER_TABLE_MONEY]
+PRIVATE_STATEMETNS = [SHOW_USER_MONEY, REQUEST_FOR_MONEY]
+MID_GAME_STATEMENTS = [CALL, FOLD, CHECK, ALL_IN]
+ALL_STATEMENTS = GAME_MANIPULATION_STATEMENTS + PRIVATE_STATEMETNS + MID_GAME_STATEMENTS
 
 class Dealer(Client):
 
@@ -66,32 +83,32 @@ class Dealer(Client):
 
         # messages sent from a group (game manipulation messages)
         if kwargs['thread_type'] == ThreadType.GROUP and message in GAME_MANIPULATION_STATEMENTS:
-            if message == 'game::activate':
+            if message == GAME_START:
                 if not game:
                     self.add_game(thread_id)
                 if not self.start_round(thread_id):
                     self.sendMessage("A new round couldn't be started", thread_id = thread_id, thread_type = ThreadType.GROUP)
                 return None
-                
+
             # from now on everything requires for a game to be played and that a player in that game wrote the message
             player = game.all_players.get_player_by_attr('fb_id', author_id) if game else None
             if not player:
                 return None
 
-            if message == 'game::lastround':
+            if message == TOGGLE_LAST_ROUND:
                 if game.round:
                     game.round.exit_after_this = not game.round.exit_after_this
                     _send = 'game will end after this round' if game.round.exit_after_this else 'game will continue'
                     self.sendMessage(_send, thread_id = thread_id, thread_type = ThreadType.GROUP)
 
             # player wants to refill his money on the playing table
-            elif message == 'user::refill':
+            elif message == REFILL_USER_TABLE_MONEY:
                 money_filled = player.refill_money()
                 if money_filled is not False:
                     self.sendMessage('Money successfully refilled by ' + str(money_filled) + ' to ' + str(player.money), thread_id = thread_id, thread_type = ThreadType.GROUP)
 
             # player wants to get all money out of the table (player has to be folded or rounds not played)
-            elif message == 'user::withdraw':
+            elif message == WITHDRAW_USER_TABLE_MONEY:
                 if (not game.round or player.is_folded) and player.money > 0:
                     money = player.money
                     player.withdraw_money()
@@ -103,7 +120,7 @@ class Dealer(Client):
                 self.sendMessage(_send, thread_id = thread_id, thread_type = ThreadType.GROUP)
 
             # player requested to see the money in a specific game he is playing (THIS SHOULD BE GONE until a better solution arises)
-            elif message == 'user::money':
+            elif message == SHOW_USER_TABLE_MONEY:
                 self.sendMessage('You Have ' + str(player.money), thread_id = thread_id, thread_type = ThreadType.GROUP)
 
         # message within active round was sent (game continuation)
@@ -126,10 +143,10 @@ class Dealer(Client):
             data = FileMethods.fetch_database_json(confirmed_path)
 
             # player requested to see the money from the database
-            if message.lower() == 'show money':
+            if message.lower() == SHOW_USER_MONEY:
                 self.sendMessage(f"You have {data['money']} left", thread_id = author_id, thread_type = ThreadType.USER)
 
-            elif message.lower() == 'gimme moneyz':
+            elif message.lower() == REQUEST_FOR_MONEY:
                 timestamp = TimeMethods.formatted_timestamp()
                 diff = TimeMethods.get_time_diff(timestamp, data['timestamp'])
 
@@ -230,7 +247,7 @@ class FbPlayer(Player):
         file_data = FileMethods.fetch_database_json(self.data_path)
         file_data['money'] += file_data['table_money'][self.table_id]
         file_data['table_money'][self.table_id] = 0
-        FileMethoods.send_to_database(self.data_path, file_data)
+        FileMethods.send_to_database(self.data_path, file_data)
         self.money = 0
 
     # called when player leaves the table (or game ends)
@@ -294,7 +311,7 @@ class FbPokerGame(PokerGame):
 
 
 # this has to be done before every game
-def scrape_leftover_money():
+def collect_leftover_money():
     for file in Path(DATABASE).iterdir():
         if file.suffix == '.json':
             file_data = FileMethods.fetch_database_json(file)
@@ -302,9 +319,10 @@ def scrape_leftover_money():
             file_data['table_money'] = {}
             FileMethods.send_to_database(file, file_data)
 
-scrape_leftover_money()
+collect_leftover_money()
 
 # game continuation
 if __name__ == '__main__':
+    DATABASE.mkdir(parents=True, exist_ok=True) # make the directory if one doesn't exist
     DEALER = Dealer(DEALER_MAIL, DEALER_PASSWORD)
     DEALER.listen()

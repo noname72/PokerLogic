@@ -1,5 +1,6 @@
 # originaly made with fbchat Version 1.3.9
 
+from random import choice
 from pathlib import Path
 from fbchat import Client
 from fbchat.models import *
@@ -60,8 +61,7 @@ class Dealer(Client):
     def onPersonRemoved(self, removed_id, author_id, thread_id, **kwargs):
         if thread_id in self.games: # if a game isnt played on the table there isnt anything to do
             if removed_id == self.uid: # if a dealer is removed, remove game on that table from games
-                txt = FileMethods.fetch_database_txt(Path('quotes') / 'PulpFiction.txt')
-                self.sendMessage(txt, thread_id = author_id)
+                self.make_threat(author_id) # make a threat so user will remember not to remove you from the game ever again
                 self.remove_game(thread_id) # this is where game is removed and ended forcibly (SHOULDN'T HAPPEN)
 
             elif author_id != removed_id: # player only can remove himself
@@ -177,6 +177,17 @@ class Dealer(Client):
             game.new_round()
             return True
         return False
+
+    # this makes a random threat to user_id if there are threats
+    def make_threat(self, user_id):
+        pth = Path('quotes')
+        if pth.is_dir():
+            user_name = self.fetchUserInfo(user_id).name
+            choice_list = list(pth.iterdir())
+            if choice_list:
+                file_name = choice(choice_list)
+                send = FileMethods.fetch_database_txt(pth / file_name)
+                return self.sendMessage(send.format(name = user_name), thread_id = user_id, thread_type = ThreadType.USER)
 
     def fetch_uids_on_table(self, table_id) -> set: # without dealer (dealer on the table is trivial)
         return {uid for uid in self.fetchGroupInfo(table_id)[table_id].participants if uid != self.uid} # set of user ids

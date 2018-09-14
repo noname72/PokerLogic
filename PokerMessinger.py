@@ -23,7 +23,7 @@ MONEY_ADD_PER_PERIOD = 100 # how much a player gets if he requests for money
 VALUES = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
 SUITS = ['♠', '♣️', '♦️', '♥️']
 
-# valid statements that a dealer receives from player (they should all be lowercase)
+# valid statements that a dealer receives from players (they should all be lowercase)
 GAME_START = '::init' # starts game and/or round if conditions for round are met
 TOGGLE_LAST_ROUND = '::lastround' # toggles the round being played
 SHOW_USER_TABLE_MONEY = '::money' # shows how much money user has on the table
@@ -33,14 +33,9 @@ WITHDRAW_USER_TABLE_MONEY = '::withdraw' # takes all the money from player's tab
 SHOW_USER_MONEY = 'show money' # shows player main money
 REQUEST_FOR_MONEY = 'gimme moneyz' # requests for MONEY_ADD_PER_PERIOD
 
-CALL = 'call'
-FOLD = 'fold'
-CHECK = 'check'
-ALL_IN = 'all in'
-
 GAME_MANIPULATION_STATEMENTS = [GAME_START, TOGGLE_LAST_ROUND, SHOW_USER_TABLE_MONEY, REFILL_USER_TABLE_MONEY, WITHDRAW_USER_TABLE_MONEY]
 PRIVATE_STATEMETNS = [SHOW_USER_MONEY, REQUEST_FOR_MONEY]
-MID_GAME_STATEMENTS = [CALL, FOLD, CHECK, ALL_IN]
+MID_GAME_STATEMENTS = ['call', 'fold', 'check', 'all in'] # these must remain the same
 ALL_STATEMENTS = GAME_MANIPULATION_STATEMENTS + PRIVATE_STATEMETNS + MID_GAME_STATEMENTS
 
 class Dealer(Client):
@@ -103,9 +98,10 @@ class Dealer(Client):
 
             # player wants to refill his money on the playing table
             elif message == REFILL_USER_TABLE_MONEY:
-                money_filled = player.refill_money()
-                if money_filled is not False:
-                    self.sendMessage('Money successfully refilled by ' + str(money_filled) + ' to ' + str(player.money), thread_id = thread_id, thread_type = ThreadType.GROUP)
+                if not game.round or player not in game.round.players or player.is_folded:
+                    money_filled = player.refill_money()
+                    if money_filled is not False:
+                        self.sendMessage('Money successfully refilled by ' + str(money_filled) + ' to ' + str(player.money), thread_id = thread_id, thread_type = ThreadType.GROUP)
 
             # player wants to get all money out of the table (player has to be folded or rounds not played)
             elif message == WITHDRAW_USER_TABLE_MONEY:
@@ -168,7 +164,7 @@ class Dealer(Client):
 
     # this happens ONLY when the game is forcibly ended by removing the dealer mid-game
     def remove_game(self, table_id):
-        for player in self.games.pop(thread_id).all_players:
+        for player in self.games.pop(table_id).all_players:
             player.resolve()
 
     def start_round(self, table_id):
@@ -178,21 +174,23 @@ class Dealer(Client):
             return True
         return False
 
-    # this makes a random threat to user_id if there are threats
-    def make_threat(self, user_id):
-        pth = Path('quotes')
-        if pth.is_dir():
-            user_name = self.fetchUserInfo(user_id).name
-            choice_list = list(pth.iterdir())
-            if choice_list:
-                file_name = choice(choice_list)
-                send = FileMethods.fetch_database_txt(pth / file_name)
-                return self.sendMessage(send.format(name = user_name), thread_id = user_id, thread_type = ThreadType.USER)
-
     def fetch_uids_on_table(self, table_id) -> set: # without dealer (dealer on the table is trivial)
         return {uid for uid in self.fetchGroupInfo(table_id)[table_id].participants if uid != self.uid} # set of user ids
     def fetch_players_on_table(self, table_id) -> list:
         return [FbPlayer(user_info.name, user_info.uid, table_id) for user_info in [self.fetchUserInfo(uid)[uid] for uid in self.fetch_uids_on_table(table_id)]]
+
+    ## these functions serve non-essential purpuse of dealer interaction with single user
+
+    # this makes a random threat to user_id if there are threats
+    def make_threat(self, user_id):
+        pth = Path('quotes')
+        if pth.is_dir():
+            user_name = self.fetchUserInfo(user_id)[user_id].name.split()[0]
+            choice_list = list(pth.iterdir())
+            if choice_list:
+                file_name = choice(choice_list)
+                send = FileMethods.fetch_database_txt(file_name)
+                return self.sendMessage(send.format(name = user_name), thread_id = user_id, thread_type = ThreadType.USER)
 
 
 class FbPlayer(Player):

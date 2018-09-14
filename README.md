@@ -11,10 +11,10 @@ and function that gathers input, controlling the instances created from PokerGam
 ## Library applications
 
 ### Messinger
-One application of the Library included is made in PlayMessinger.py with a help of fbchat module.
+One application of the Library included is made in FbPokerGame.py with a help of fbchat module.
 It enables a user to log into a messinger account, which comes equipped with functions of a dealer.
 Any group thread that the dealer is included in can be used as a poker table, with specific commands.
-The exact commands are included in the documentation.
+The exact commands are included in the [documentation](https://kuco23.github.io/pokermessinger/documentation.html).
 
 
 ## Code Example

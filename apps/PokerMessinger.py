@@ -1,8 +1,10 @@
 # originaly made with fbchat Version 1.3.9
 
+from sys import path
 from random import choice
 from pathlib import Path
 from fbchat import Client
+path.append(str(Path().joinpath(*Path().cwd().parts[:-1]))) # so i can use absolute paths
 from fbchat.models import *
 from lib.PokerGameObjects import PlayerGroup, Player, PokerGame
 from lib.Methods import FileMethods, TimeMethods
@@ -115,7 +117,7 @@ class Dealer(Client):
                     _send = 'Your hand has to be folded or no rounds active in orded for you to whitdraw money, so theres no funny bussiness'
                 self.sendMessage(_send, thread_id = thread_id, thread_type = ThreadType.GROUP)
 
-            # player requested to see the money in a specific game he is playing (THIS SHOULD BE GONE until a better solution arises)
+            # player requested to see the money in a specific game he is playing (THIS SHOULD BE GONE when a better solution arises)
             elif message == SHOW_USER_TABLE_MONEY:
                 self.sendMessage('You Have ' + str(player.money), thread_id = thread_id, thread_type = ThreadType.GROUP)
 

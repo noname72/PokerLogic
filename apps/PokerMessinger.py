@@ -4,10 +4,10 @@ from sys import path
 from random import choice
 from pathlib import Path
 from fbchat import Client
-path.append(str(Path().joinpath(*Path().cwd().parts[:-1]))) # so i can use absolute paths
+path.append(str(Path().cwd().parent)) # so i can use absolute paths
 from fbchat.models import *
-from lib.PokerGameObjects import PlayerGroup, Player, PokerGame
-from lib.Methods import FileMethods, TimeMethods
+from lib.pokerlib import PlayerGroup, Player, PokerGame
+from lib.methods import FileMethods, TimeMethods
 
 # this can be changed to any Facebook account
 DEALER_MAIL = 'amahmoh23@gmail.com'
@@ -103,7 +103,8 @@ class Dealer(Client):
                 if not game.round or player not in game.round.players or player.is_folded:
                     money_filled = player.refill_money()
                     if money_filled is not False:
-                        self.sendMessage('Money successfully refilled by ' + str(money_filled) + ' to ' + str(player.money), thread_id = thread_id, thread_type = ThreadType.GROUP)
+                        self.sendMessage('Money successfully refilled by ' + str(money_filled) + ' to ' + str(player.money),
+                        thread_id = thread_id, thread_type = ThreadType.GROUP)
 
             # player wants to get all money out of the table (player has to be folded or rounds not played)
             elif message == WITHDRAW_USER_TABLE_MONEY:
@@ -215,6 +216,7 @@ class FbPlayer(Player):
             FileMethods.create_datafile(self.data_path, self.get_base_datafile())
 
         super().__init__(self.name, money)
+        self.id = fb_id
 
     @property
     def money(self):
@@ -226,9 +228,6 @@ class FbPlayer(Player):
         data = FileMethods.fetch_database_json(self.data_path)
         data['table_money'][self.table_id] = value
         FileMethods.send_to_database(self.data_path, data)
-
-    def __eq__(self, other):
-        return self.fb_id == other.fb_id
 
     def get_base_datafile(self):
         return dict(
@@ -275,15 +274,15 @@ class FbPokerGame(PokerGame):
     'Dealt Cards': lambda cards: FbPokerGame.style_cards(cards),
     'Raise Amount Error': lambda: 'Raising less than big blind is not allowed unless going all in',
     'New Round': lambda round_index: (" Round " + str(round_index) + " ").center(40, '-'),
-    'Small Blind': lambda player, given: player.name + ' posted the Small Blind of ' + str(given),
-    'Big Blind': lambda player, given: player.name + ' posted the Big Blind of ' + str(given),
+    'Small Blind': lambda player_id, player_name, given: player_name + ' posted the Small Blind of ' + str(given),
+    'Big Blind': lambda player_id, player_name, given: player_name + ' posted the Big Blind of ' + str(given),
     'New Turn': lambda turn_name, table: turn_name + ':\n' + FbPokerGame.style_cards(table),
-    'Player Went All-In': lambda player, player_money: player.name + ' went all-in with ' + str(player_money),
-    'Declare Unfinished Winner': lambda winner, won: winner.name + ' won ' + str(won),
-    'Public Show Cards': lambda player, player_cards: player.name + ' has ' + FbPokerGame.style_cards(player_cards),
-    'Declare Finished Winner': lambda winner, won, hand_name, hand_base, kicker: winner.name + ' won ' + str(won) + ' with ' +
-     FbPokerGame.hand_repr(hand_name, hand_base, VALUES, SUITS) +
-    ''.join([', ' + FbPokerGame.style_cards(kicker, True) + ' kicker' if kicker else ''])
+    'To Call': lambda player_name, player_id, to_call: player_name + str(to_call) if to_call > 0 else player_name,
+    'Player Went All-In': lambda player_id, player_name, player_money: player_name + ' went all-in with ' + str(player_money),
+    'Declare Unfinished Winner': lambda winner_id, winner_name, won: winner_name + ' won ' + str(won),
+    'Public Show Cards': lambda player_id, player_name, player_cards: player_name + ' has ' + FbPokerGame.style_cards(player_cards),
+    'Declare Finished Winner': lambda winner_id, winner_name, won, hand_name, hand_base, kicker: winner_name + ' won ' + str(won) + ' with ' +
+     FbPokerGame.hand_repr(hand_name, hand_base, VALUES, SUITS) + ''.join([', ' + FbPokerGame.style_cards(kicker, True) + ' kicker' if kicker else ''])
     }
 
     @staticmethod

@@ -21,6 +21,7 @@ there are two possibilities for a player that has won or split the pot with play
 - ::init n rounds # n > 0
 - greet person
 - create user data in greater detail (folded hands,...)
+- fbmessinger log user doings
 
 
 - raises on flop if has something

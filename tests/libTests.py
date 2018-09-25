@@ -1,4 +1,7 @@
-from lib.PokerGameObjects import PlayerGroup, Player, PokerGame
+from pathlib import Path
+from sys import path
+path.append(str(Path().cwd().parent))
+from lib.pokerlib import PlayerGroup, Player, PokerGame
 
 PLAYERS = ['Nejc', 'Tjasa', 'Gorazd']
 

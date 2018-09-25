@@ -38,7 +38,7 @@ REQUEST_FOR_MONEY = 'gimme moneyz' # requests for MONEY_ADD_PER_PERIOD
 GAME_MANIPULATION_STATEMENTS = [GAME_START, TOGGLE_LAST_ROUND, SHOW_USER_TABLE_MONEY, REFILL_USER_TABLE_MONEY, WITHDRAW_USER_TABLE_MONEY]
 PRIVATE_STATEMETNS = [SHOW_USER_MONEY, REQUEST_FOR_MONEY]
 MID_GAME_STATEMENTS = ['call', 'fold', 'check', 'all in'] # these must remain the same
-ALL_STATEMENTS = GAME_MANIPULATION_STATEMENTS + PRIVATE_STATEMETNS + MID_GAME_STATEMENTS
+STATEMENTS = GAME_MANIPULATION_STATEMENTS + PRIVATE_STATEMETNS + MID_GAME_STATEMENTS
 
 class Dealer(Client):
 
@@ -73,7 +73,7 @@ class Dealer(Client):
     # processing input from players and saving it into glob_message
     def onMessage(self, author_id, message, thread_id, **kwargs):
         message = message.lower()
-        if author_id == self.uid or (message not in ALL_STATEMENTS and not message.startswith('raise ')):
+        if author_id == self.uid or (message not in STATEMENTS and not message.startswith('raise ')):
             return None
 
         game = self.games[thread_id] if thread_id in self.games else None
@@ -277,7 +277,7 @@ class FbPokerGame(PokerGame):
     'Small Blind': lambda player_id, player_name, given: player_name + ' posted the Small Blind of ' + str(given),
     'Big Blind': lambda player_id, player_name, given: player_name + ' posted the Big Blind of ' + str(given),
     'New Turn': lambda turn_name, table: turn_name + ':\n' + FbPokerGame.style_cards(table),
-    'To Call': lambda player_name, player_id, to_call: player_name + str(to_call) if to_call > 0 else player_name,
+    'To Call': lambda player_name, player_id, to_call: player_name + '\n' + str(to_call) + ' to call' if to_call > 0 else player_name,
     'Player Went All-In': lambda player_id, player_name, player_money: player_name + ' went all-in with ' + str(player_money),
     'Declare Unfinished Winner': lambda winner_id, winner_name, won: winner_name + ' won ' + str(won),
     'Public Show Cards': lambda player_id, player_name, player_cards: player_name + ' has ' + FbPokerGame.style_cards(player_cards),

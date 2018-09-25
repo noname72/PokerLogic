@@ -1,5 +1,6 @@
 STRATEGY FOR CHECKING AND DEAING WINNNGS:
-We start by sorting the players who have contributed the least to the pot to the ones who have contributed the most and add those who called all the way to the end (in any order).
+We start by sorting the players who have contributed the least to the pot to the ones
+who have contributed the most and add those who called all the way to the end (in any order).
 Then we loop through players and on every loop we get winners. Here it's important to understand:
 
 - the player who contributed to the pot the least is first on the loop, and must win the hand to every other player (or split)
@@ -22,6 +23,7 @@ there are two possibilities for a player that has won or split the pot with play
 - greet person
 - create user data in greater detail (folded hands,...)
 - fbmessinger log user doings
+- in deal_winnings create players_stakes_grouped (group players by subgames played and adjust the loop)
 
 
 - raises on flop if has something

@@ -1,4 +1,5 @@
 from itertools import cycle
+from copy import copy
 try:
     from numpy.random import shuffle # numpy is faster
 except ModuleNotFoundError as e:
@@ -28,7 +29,7 @@ class HandParser:
 
         # best five cards in hand (all that really matters)
         self.hand_base_cards = self.status[self.top_hand_name]
-        self.kickers = [card for card in self.cards if card not in self.hand_base_cards][::-1][:5 - len(self.hand_base_cards)]
+        self.kickers = [card for card in self.cards if card not in self.hand_base_cards][::-1][:5 - len(self.hand_base_cards)] if len(hand) == 7 else []
         self.top_cards = self.hand_base_cards + self.kickers
 
     def __repr__(self):
@@ -68,6 +69,9 @@ class HandParser:
                     continue
                 return s_card[0] < o_card[0]
         return False
+
+    def add(self, cards): # THIS METHOD SHOULD BE OPTIMIZED
+        self.__init__(self.cards + cards)
 
     def status_repr(self):
         return '\n'.join([f'{stat} --> {self.status[stat]}' for stat in self.status])
@@ -158,12 +162,6 @@ class HandParser:
     def get_same_suits(split_cards, match):
         return [[value, suit] for value, suit in split_cards if suit == match]
 
-    # get winners
-    @staticmethod
-    def winners(hands: list) -> list:
-        winner = max(hands)
-        return [hand for hand in hands if hand == winner]
-
     @staticmethod
     def get_kicker(hands: list):
         kicker = []
@@ -203,22 +201,6 @@ class HandParser:
                 elif w_card[0] > l_card[0]:
                     kicker.append(w_card[0])
                     return kicker
-                
-def random_hand(n):
-    deck = [[i, j] for i in range(13) for j in range(4)]
-    shuffle(deck)
-    return [deck[i] for i in range(n)]
-
-# player Hand
-class Hand(HandParser):
-    def __init__(self, _id, hand):
-        super().__init__(hand)
-        self.id = _id
-
-    @staticmethod
-    def winners(hands: list) -> list:
-        winner = max(hands)
-        return [hand.id for hand in hands if hand == winner]
 
 
 # this was just needed constantly within PokerGame
@@ -230,6 +212,7 @@ class PlayerGroup(list):
 
     def __init__(self, players: list):
         assert not any([players[i - 1].id == players[i].id for i in range(1, len(players))]) # all names must differ
+        assert all([isinstance(player, Player) for player in self]) # every player in list has to be an object derived from Player class (or its baseclass)
         super().__init__(players)
 
     def __getitem__(self, i):
@@ -293,6 +276,10 @@ class PlayerGroup(list):
                 return False
         return True
 
+    def winners(self):
+        winner = max(self)
+        return type(self)([player for player in self if player.hand == winner.hand])
+
 # Game is made so that it is controled from input function, where the Game logic from this object must be combined
 # in private out if list or tuple is passed it means it contains cards
 class Player:
@@ -307,6 +294,7 @@ class Player:
 
         # this resets every round
         self.cards = ()
+        self.hand = None
         self.is_folded = False
         self.is_all_in = False # sets to the round player went all_in
         self.money_given = [0, 0, 0, 0] # for pre-flop, flop, turn, river
@@ -326,10 +314,14 @@ class Player:
         return self.id == other.id
 
     def __lt__(self, other):
-        return True
+        if self.hand and other.hand:
+            return self.hand < other.hand
+        print('error')
 
     def __gt__(self, other):
-        return True
+        if self.hand and other.hand:
+            return self.hand > other.hand
+        print('error')
 
     def is_active(self):
         return self.money > 0 and not self.is_folded and not self.is_all_in
@@ -426,7 +418,9 @@ class PokerGame:
 
                 assert player.money > 0
                 player.cards = tuple(next(this.deck) for _ in range(2))
+                player.hand = HandParser(list(player.cards))
                 this.self.private_out(player, cards = player.cards, _id = 'Dealt Cards')
+
 
 
             previous_player = this.players.previous_active_player_from(this.button)
@@ -449,6 +443,7 @@ class PokerGame:
                 player.played_turn = False
                 player.stake = 0
                 player.cards = ()
+                player.hand = None
 
             # if game wasnt scheduled to end after this round from an external source and game is ok to continue, then trigger a new round
             if not this.exit_after_this and this.self.is_ok():
@@ -456,7 +451,7 @@ class PokerGame:
 
         # returns a shuffled deck generator
         def deck_generator(this):
-            deck = this.__deck.copy()
+            deck = copy(this.__deck)
             shuffle(deck)
             return (card for card in deck) # returns a generator
 
@@ -544,7 +539,7 @@ class PokerGame:
 
             # process FOLD
             elif action == 'fold':
-                this.self.public_out(player_id = this.current.player.id, player_name = this.current_player.name, _id = 'Player Folded')
+                this.self.public_out(player_id = this.current_player.id, player_name = this.current_player.name, _id = 'Player Folded')
                 this.current_player.is_folded = True
                 this.current_player.played_turn = True
                 this.process_after_input()
@@ -559,10 +554,12 @@ class PokerGame:
 
             # For FLOP, TURN, RIVER
             for i in (3, 1, 1):
+                new_cards = [next(this.deck) for _ in range(i)]
                 for player in this.players:
                     player.played_turn = False
+                    player.hand.add(new_cards)
 
-                this.table.extend([next(this.deck) for _ in range(i)])
+                this.table.extend(new_cards)
                 this.self.public_out(turn_name = turn_dict[len(this.table)], table = this.table, _id = 'New Turn')
                 yield True
 
@@ -616,20 +613,18 @@ class PokerGame:
             not_all_in_active = [player for player in this.players if player.is_active()] # is_active covers people not all_in, wwith money and not folded
             # players from smallest to largest stake in pot (not all_in's stake doesnt matter as long as they are last)
             active_and_sorted_all_ins = type(this.players)(all_ins_sorted + not_all_in_active)
-
-            # hand objects of winning players' hands
-            player_hands = [Hand(player.id, list(player.cards) + this.table) for player in active_and_sorted_all_ins]
-            static_hands = player_hands.copy()
+            static_active_and_sorted_all_ins = copy(active_and_sorted_all_ins)
 
             # show players' hands
             for stayed_in in active_and_sorted_all_ins:
                 this.self.public_out(player_id = stayed_in.id, player_name = stayed_in.name, player_cards = stayed_in.cards, _id = 'Public Show Cards')
 
-            for stayed_in in active_and_sorted_all_ins: # here the loop order (sorting of active_and_sorted_all_ins) is mucho importante
-                winning_player_ids = Hand.winners(player_hands)
-                winning_players = type(this.players)([active_and_sorted_all_ins[player_name] for player_name in winning_player_ids])
+            for stayed_in in static_active_and_sorted_all_ins: # here the loop order (sorting of active_and_sorted_all_ins) is mucho importante
+                winning_players = active_and_sorted_all_ins.winners()
 
-                if stayed_in.id in winning_player_ids:
+                if stayed_in in winning_players: # here Player.__eq__ is important (also player.id)
+                    # subgame means the players who are included in the competition for their bought part of the pot
+                    subgame_participants = [player for player in static_active_and_sorted_all_ins if 0 < stayed_in.stake <= player.stake] # used to get kicker
                     # this is static for the loops bellow
                     # (winning players need to split the static money, while taking it out at the same time so the same money doesnt get won multiple times)
                     PLAYER_STAKES = [player.stake for player in this.players]
@@ -650,18 +645,18 @@ class PokerGame:
                             player.stake -= take_home # stakes are taken from the player
 
                         # if players collected any left stakes (winnings) it is added to their money, kickers set, and ou
-                        if player_winnings:
+                        if round(player_winnings):
                             winning_split.money += round(player_winnings)
 
                             # this block is for public_out
-                            subgame_participants = [player.id for player in active_and_sorted_all_ins if player.stake >= winning_split.stake] # subgame participants
-                            kicker = Hand.get_kicker([hand for hand in static_hands if hand.id in subgame_participants])
-                            winner_hand = [hand for hand in player_hands if hand.id == winning_split.id][0]
+                            # subgame participants are players that you winning_split had to beat to get player_winnings
+                            kicker = HandParser.get_kicker([player.hand for player in subgame_participants])
                             this.self.public_out(winner_id = winning_split.id, winner_name = winning_split.name, won = round(player_winnings),
-                            hand_name = winner_hand.top_hand_name, hand_base = winner_hand.hand_base_cards, kicker = kicker, _id = 'Declare Finished Winner')
+                            hand_name = winning_split.hand.top_hand_name, hand_base = winning_split.hand.hand_base_cards,
+                            kicker = kicker, _id = 'Declare Finished Winner')
 
-                # remove hands of players with lower stakes, as they are not competing in the same stake range (they already collected their bet equivalence if won)
-                player_hands = [player_hand for player_hand in player_hands if player_hand.id != stayed_in.id]
+                # remove the player that was dealt his winnings so he can be excluded from later winnings
+                active_and_sorted_all_ins.pop(0)
 
         @staticmethod
         def isint(string):

@@ -3,7 +3,7 @@ from sys import path
 path.append(str(Path().cwd().parent))
 from lib.pokerlib import PlayerGroup, Player, PokerGame
 
-PLAYERS = ['Nejc', 'Tjasa', 'Gorazd']
+PLAYERS = ['Nejc', 'Tjasa']
 
 STARTING_MONEY = 1000
 SMALL_BLIND = STARTING_MONEY // 100
@@ -23,7 +23,7 @@ class TermPokerGame(PokerGame):
 
 
 if __name__ == '__main__':
-    game = TermPokerGame(PlayerGroup([Player(player, STARTING_MONEY // (i + 1)) for i, player in enumerate(PLAYERS)]), BIG_BLIND)
+    game = TermPokerGame(PlayerGroup([Player(player, 10) for i, player in enumerate(PLAYERS)]), BIG_BLIND)
     game.new_round()
     while game.round:
         action = input(game.round.current_player.name + ': ')

@@ -303,14 +303,6 @@ class Player:
         # this resets every turn
         self.played_turn = False
 
-    @property
-    def money_given(self):
-        return self.__money_given
-    @money_given.setter
-    def money_given(self, val):
-        self.stake = sum(val) # a sum of the money player has given into the pot the current round
-        self.__money_given = val
-
     def __repr__(self):
         return f"Player({self.name}, {self.money})"
 
@@ -364,7 +356,7 @@ class PokerGame:
         self.rounds_played = 0
 
         # changes during game, resets every round
-        self.button = players[0] # player that posts big blind (starts with the first one)
+        self.button = players[0] if players else None # player that posts big blind (starts with the first one)
 
     @property
     def all_players(self):
@@ -372,6 +364,7 @@ class PokerGame:
 
     def on_player_join(self, player):
         self.players.append(player)
+        self.button = player if not self.button else self.button
 
     def on_player_leave(self, player):
         if self.round and player in self.round.players and player.is_active(): # if round is being played and if player is playing in it (all_ins bugs)
@@ -401,6 +394,11 @@ class PokerGame:
         # if your money > 0 you are playing in the round
         self.round = self.Round(type(self.players)(self.players.get_players_with_money()), self.button, self)
 
+        # this happens if during the self.round attribute setting the game closes, so this.round sets itself to None, but because this
+        # is during its attribute setting it is still defined as round
+        if not self.is_ok():
+            self.round = None
+
     class Round:
         __deck = [[value, suit] for suit in range(4) for value in range(13)]
 
@@ -428,8 +426,6 @@ class PokerGame:
                 player.hand = HandParser(list(player.cards))
                 this.self.private_out(player, cards = player.cards, _id = 'Dealt Cards')
 
-
-
             previous_player = this.players.previous_active_player_from(this.button)
             this.player_added_to_pot(previous_player, this.self.big_blind // 2)
             this.self.public_out(player_id = previous_player.id, player_name = previous_player.name, given = previous_player.money_given[0], _id = 'Small Blind')
@@ -442,7 +438,6 @@ class PokerGame:
 
         # deletes itself from game attributes, resets everything and returns whether the game should be continued
         def close(this):
-            this.self.round = None
             for player in this.players:
                 player.money_given = [0, 0, 0, 0]
                 player.is_folded = False
@@ -452,12 +447,13 @@ class PokerGame:
                 player.hand = None
 
             # if game wasnt scheduled to end after this round from an external source and game is ok to continue, then trigger a new round
+            this.self.round = None
             if not this.exit_after_this and this.self.is_ok():
                 this.self.new_round()
 
         # returns a shuffled deck generator
         def deck_generator(this):
-            deck = copy(this.__deck)
+            deck = copy(this.__deck) # only a shallow copy is needed
             shuffle(deck)
             return (card for card in deck) # returns a generator
 
@@ -537,8 +533,6 @@ class PokerGame:
             # process check if there is no money to call (same as call only for instances when you call 0)
             elif action == 'check' and money_left_to_call == 0:
                 this.self.public_out(player_id = this.current_player.id, player_name = this.current_player.name, _id = 'Player Checked')
-                #* in case of all in situation which can happen only at the beginning of the round when player is forced to take action
-                this.player_added_to_pot(this.current_player, 0) #*
                 this.current_player.played_turn = True
                 this.process_after_input()
                 return True
@@ -599,7 +593,7 @@ class PokerGame:
             this.self.public_out(player_name = this.current_player.name, player_id = this.current_player.id, to_call = to_call, _id = 'To Call')
 
         def deal_winnings(this):
-            # if all players leave
+            # if all players leave (safety)
             if len(this.players.get_not_folded_players()) == 0:
                 return None
 
@@ -610,53 +604,55 @@ class PokerGame:
                 this.self.public_out(winner_id = winner.id, winner_name = winner.name, won = sum(this.get_pot_size()), _id = 'Declare Unfinished Winner')
                 return None
 
+            for player in this.players:
+                player.stake = sum(player.money_given)
+
             # arranges players who have gone all in by their pot contribution size (from smallest to largest)
+            # player can be all in and folded if he left after going all in and had status is_folded set from outside the round instance
             all_ins_sorted = [player for _, player in sorted([[sum(player.money_given), player] for player in this.players if player.is_all_in and not player.is_folded])]
-            not_all_in_active = [player for player in this.players if player.is_active()] # is_active covers people not all_in, wwith money and not folded
+            not_all_in_active = [player for player in this.players if not (player.is_all_in or player.is_folded)]
             # players from smallest to largest stake in pot (not all_in's stake doesnt matter as long as they are last)
             # subgame means the players who are included in the competition for their bought part of the pot
             sorted_by_subgames = type(this.players)(all_ins_sorted + not_all_in_active)
             # players grouped by their pot contribution (indexes in sorted_by_subgames list)
-            grouped_indexes = [0] + [i for i in range(1, len(sorted_by_subgames)) if sorted_by_subgames[i - 1] < sorted_by_subgames[i]] + [len(sorted_by_subgames)]
+            grouped_indexes = [0] + [i for i in range(1, len(sorted_by_subgames)) if sorted_by_subgames[i - 1].stake < sorted_by_subgames[i].stake]
 
             # show players' hands
             for competitor in sorted_by_subgames:
                 this.self.public_out(player_id = competitor.id, player_name = competitor.name, player_cards = competitor.cards, _id = 'Public Show Cards')
 
-            for i in range(1, len(grouped_indexes)):
-                subgame_competitors = sorted_by_subgames[grouped_indexes[i - 1]:] # this are the people competing for the part of the pot they bought
+            for i in grouped_indexes:
+                subgame_competitors = sorted_by_subgames[i:] # this are the people competing for the part of the pot they bought
                 winning_players = subgame_competitors.winners()
 
-                for competitor in sorted_by_subgames[grouped_indexes[i - 1] : grouped_indexes[i]]: # <=> competitor in grouped_by_subgames
-                    if competitor in winning_players: # here Player.__eq__ is important (also player.id)
-                        # this is static for the loops bellow
-                        # (winning players need to split the static money, while taking it out at the same time so the same money doesnt get won multiple times)
-                        PLAYER_STAKES = [player.stake for player in this.players]
-                        STAYED_IN_STAKE = competitor.stake
+                # this is static for the loops bellow
+                # (winning players need to split the static money, while taking it out at the same time so the same money doesnt get won multiple times)
+                PLAYER_STAKES = [player.stake for player in this.players]
+                SUBGAME_STAKE = subgame_competitors[0].stake
 
-                        for winning_split in winning_players: # give winnings to players that split the subpot
-                            player_winnings = 0
-                            for player, PLAYER_STAKE in zip(this.players, PLAYER_STAKES):
+                for winning_split in winning_players: # give winnings to players that split the subpot
+                    player_winnings = 0
+                    for player, PLAYER_STAKE in zip(this.players, PLAYER_STAKES):
 
-                                if 0 < PLAYER_STAKE <= STAYED_IN_STAKE: # it all depends on stayed in as he has the lowest stakes, the rest will collect later
-                                    take_home = PLAYER_STAKE / len(winning_players)
-                                elif 0 < STAYED_IN_STAKE < PLAYER_STAKE:
-                                    take_home = STAYED_IN_STAKE / len(winning_players)
-                                else: # if STAYED_IN_STAKE == 0 or PLAYER_STAKE == 0, theres nothing to collect
-                                    continue
+                        if 0 < PLAYER_STAKE <= SUBGAME_STAKE:
+                            take_home = PLAYER_STAKE / len(winning_players)
+                        elif 0 < SUBGAME_STAKE < PLAYER_STAKE:
+                            take_home = SUBGAME_STAKE / len(winning_players)
+                        else: # if SUBGAME_STAKE == 0 or PLAYER_STAKE == 0, theres nothing to collect
+                            continue
 
-                                player_winnings += take_home # winnings are added to the winner (they are added to the money later)
-                                player.stake -= take_home # stakes are taken from the player
+                        player_winnings += take_home # winnings are added to the winner (they are added to the money later)
+                        player.stake -= take_home # stakes are taken from the player
 
-                            # if players collected any left stakes (winnings) it is added to their money, kickers set, and ou
-                            if round(player_winnings):
-                                winning_split.money += round(player_winnings)
-                                # this block is for public_out
-                                # subgame participants are players that you winning_split had to beat to get player_winnings
-                                kicker = HandParser.get_kicker([player.hand for player in subgame_competitors])
-                                this.self.public_out(winner_id = winning_split.id, winner_name = winning_split.name, won = round(player_winnings),
-                                hand_name = winning_split.hand.top_hand_name, hand_base = winning_split.hand.hand_base_cards,
-                                kicker = kicker, _id = 'Declare Finished Winner')
+                    # if players collected any left stakes (winnings) it is added to their money, kickers set, and ou
+                    if round(player_winnings):
+                        winning_split.money += round(player_winnings)
+                        # this block is for public_out
+                        # subgame participants are players that you winning_split had to beat to get player_winnings
+                        kicker = HandParser.get_kicker([player.hand for player in subgame_competitors])
+                        this.self.public_out(winner_id = winning_split.id, winner_name = winning_split.name, won = round(player_winnings),
+                        hand_name = winning_split.hand.top_hand_name, hand_base = winning_split.hand.hand_base_cards,
+                        kicker = kicker, _id = 'Declare Finished Winner')
 
         @staticmethod
         def isint(string):

@@ -20,10 +20,9 @@ there are two possibilities for a player that has won or split the pot with play
 
 
 - ::init n rounds # n > 0
-- greet person
 - create user data in greater detail (folded hands,...)
 - fbmessinger log user doings
-- in deal_winnings create players_stakes_grouped (group players by subgames played and adjust the loop)
+- settle the players who lost all their money problem and their refills
 
 
 - raises on flop if has something

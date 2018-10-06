@@ -59,7 +59,7 @@ class Dealer(Client):
                 self.addUsersToGroup([removed_id], thread_id = thread_id)
             else:
                 game = self.games[thread_id]
-                player = game.players.get_player_by_attr('fb_id', removed_id)
+                player = game.players['fb_id', removed_id]
                 if player:
                     game.on_player_leave(player)
                     player.resolve()
@@ -99,7 +99,7 @@ class Dealer(Client):
             elif message == BUY_IN:
                 if not game:
                     self.sendMessage('This group had not yet been initialized as a poker table', thread_id = thread_id, thread_type = ThreadType.GROUP)
-                elif game.players.get_player_by_attr('fb_id', author_id):
+                elif game.players['fb_id', author_id]:
                     self.sendMessage('You are already playing in this game. If you wish to refill your money use "{REFILL_TABLE_MONEY}" statement',
                     thread_id = thread_id, thread_type = ThreadType.GROUP)
                 elif len(game.all_players.get_players_with_money()) >= 9:
@@ -111,7 +111,7 @@ class Dealer(Client):
                     game.on_player_join(FbPlayer(user_info.name, user_info.uid, thread_id))
 
             # from now on everything requires for a game to be played and that a player in that game wrote the message
-            player = game.all_players.get_player_by_attr('fb_id', author_id) if game else None
+            player = game.all_players['fb_id', author_id] if game else None
             if not player:
                 return None
 
@@ -278,7 +278,8 @@ class FbPokerGame(PokerGame):
     'Declare Unfinished Winner': lambda winner_id, winner_name, won: winner_name + ' won ' + str(won),
     'Public Show Cards': lambda player_id, player_name, player_cards: player_name + ' has ' + FbPokerGame.style_cards(player_cards),
     'Declare Finished Winner': lambda winner_id, winner_name, won, hand_name, hand_base, kicker: winner_name + ' won ' + str(won) + ' with ' +
-     FbPokerGame.hand_repr(hand_name, hand_base, VALUES, SUITS) + ''.join([', ' + FbPokerGame.style_cards(kicker, True) + ' kicker' if kicker else ''])
+     FbPokerGame.hand_repr(hand_name, hand_base, VALUES, SUITS) + ''.join([', ' + FbPokerGame.style_cards(kicker, True) + ' kicker' if kicker else ''],
+     'Player Lost Money': lambda player_id, player_name: player_name + ' has been removed from the game')
     }
 
     @staticmethod

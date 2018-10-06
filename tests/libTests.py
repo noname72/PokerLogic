@@ -23,7 +23,8 @@ class TermPokerGame(PokerGame):
 
 
 if __name__ == '__main__':
-    game = TermPokerGame(PlayerGroup([Player(player, 10) for i, player in enumerate(PLAYERS)]), BIG_BLIND)
+    game = TermPokerGame(PlayerGroup([Player(player, STARTING_MONEY)
+                                      for i, player in enumerate(PLAYERS)]), BIG_BLIND)
     game.new_round()
     while game.round:
         action = input(game.round.current_player.name + ': ')

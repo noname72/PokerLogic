@@ -373,9 +373,7 @@ class PokerGame:
             self.players.remove(player)
 
     def is_ok(self):
-        if not 2 <= len(self.players) <= 9:
-            return False
-        return True
+        return 2 <= len(self.players) <= 9
 
     def new_round(self):
         # round should be None and game should be OK to start another round (external processes should cover this)
@@ -575,7 +573,6 @@ class PokerGame:
                 this.deal_winnings()
                 return this.close()
 
-            # check_required tells this expression whether to end the round without player input or if player input is required, even if not needed
             # if everyone or everyone but one went all in and there is more than one player who hasnt folded input stage is over
             if len(this.players.get_active_players()) <= 1 and this.pot_is_equal() and len(this.players.get_not_folded_players()) >= 2:
                 for _ in range(3 - TABLE_DICT[len(this.table)]): # user input not needed, so turns continue within this same function
@@ -583,7 +580,8 @@ class PokerGame:
                 this.deal_winnings()
                 return this.close()
 
-            # turn ends if money on the table is equal (all ins are treated differentely) and all players have played their turn (other scenarios were processed before)
+            # turn ends if money on the table is equal (all ins are treated differentely)
+            # and all players have played their turn (other scenarios were processed before)
             # PlayerGroup.all_played_turn checks if player is_active()
             if this.players.all_played_turn() and this.pot_is_equal():
                 if len(this.table) == 5:

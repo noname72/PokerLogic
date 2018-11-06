@@ -9,9 +9,13 @@ from fbchat.models import *
 from lib.pokerlib import PlayerGroup, Player, PokerGame
 from lib.methods import FileMethods, TimeMethods
 
+# this is the documentation and the link is sent to every new player
+DOCUMENTATION_URL = 'https://kuco23.github.io/pokermessinger/documentation.html'
+
 # this can be changed to any Facebook account
-DEALER_MAIL = 'amahmoh23@gmail.com'
-DEALER_PASSWORD = 'ramanujan'
+if __name__ == '__main__':
+    DEALER_MAIL = input('Dealer email: ')
+    DEALER_PASSWORD = input('Dealer pass: ')
 
 DATABASE = Path('data') # database of player .json files
 
@@ -29,6 +33,7 @@ SUITS = ['♠', '♣️', '♦️', '♥️']
 INITIALIZE_GAME = '::init' # adds a FbPokerGame object to the Dealer instance attribute dict
 START_GAME = '::start' # executes a series of round
 TOGGLE_LAST_ROUND = '::lastround' # toggles the round being played
+
 BUY_IN = '::buyin' # adds player to the game
 LEAVE_TABLE = '::leave' # removes player from game / folds his hand before if he is participating in a round
 REFILL_TABLE_MONEY = '::refill' # refills user table money to TABLE_MONEY (takes it from his main money)
@@ -98,17 +103,20 @@ class Dealer(Client):
 
             elif message == BUY_IN:
                 if not game:
-                    self.sendMessage('This group had not yet been initialized as a poker table', thread_id = thread_id, thread_type = ThreadType.GROUP)
+                    self.sendMessage('This group had not yet been initialized as a poker table',
+                    thread_id = thread_id, thread_type = ThreadType.GROUP)
                 elif game.players['fb_id', author_id]:
                     self.sendMessage('You are already playing in this game. If you wish to refill your money use "{REFILL_TABLE_MONEY}" statement',
                     thread_id = thread_id, thread_type = ThreadType.GROUP)
-                elif len(game.all_players.get_players_with_money()) >= 9:
+                elif len(game.all_players) >= 9:
                     self.sendMessage('There is already a maximum amount of players playing on this table',
                     thread_id = thread_id, thread_type = ThreadType.GROUP)
                 else:
                     user_info = self.fetchUserInfo(author_id)[author_id]
-                    self.sendMessage(user_info.name + ' has bought into the game', thread_id = thread_id, thread_type = ThreadType.GROUP)
-                    game.on_player_join(FbPlayer(user_info.name, user_info.uid, thread_id))
+                    player = FbPlayer(user_info.name, user_info.uid, thread_id)
+                    game.on_player_join(player)
+                    self.sendMessage(user_info.name + ' has bought into the game with ' + str(player.money),
+                    thread_id = thread_id, thread_type = ThreadType.GROUP)
 
             # from now on everything requires for a game to be played and that a player in that game wrote the message
             player = game.all_players['fb_id', author_id] if game else None
@@ -159,7 +167,8 @@ class Dealer(Client):
                     user_info = self.fetchUserInfo(author_id)[author_id]
                     FileMethods.create_datafile(DATABASE / (user_info.uid + '.json'),
                     {"name": user_info.name, "money": PLAYER_STARTING_MONEY, "table_money": {}, "timestamp": TimeMethods.formatted_timestamp()})
-                    self.sendMessage('Welcome ' + user_info.name + '!, ' + str(PLAYER_STARTING_MONEY) + ' was added to your account', thread_id = thread_id)
+                    self.sendMessage(f'''Welcome {user_info.name}!, {PLAYER_STARTING_MONEY} was added to your account.\n
+                    For more info about the game check the documentation\n{DOCUMENTATION_URL}''', thread_id = thread_id)
 
             # if the author is not inside the database notify the author and end the execution
             if not test_path:
@@ -278,8 +287,8 @@ class FbPokerGame(PokerGame):
     'Declare Unfinished Winner': lambda winner_id, winner_name, won: winner_name + ' won ' + str(won),
     'Public Show Cards': lambda player_id, player_name, player_cards: player_name + ' has ' + FbPokerGame.style_cards(player_cards),
     'Declare Finished Winner': lambda winner_id, winner_name, won, hand_name, hand_base, kicker: winner_name + ' won ' + str(won) + ' with ' +
-     FbPokerGame.hand_repr(hand_name, hand_base, VALUES, SUITS) + ''.join([', ' + FbPokerGame.style_cards(kicker, True) + ' kicker' if kicker else ''],
-     'Player Lost Money': lambda player_id, player_name: player_name + ' has been removed from the game')
+     FbPokerGame.hand_repr(hand_name, hand_base, VALUES, SUITS) + ''.join([', ' + FbPokerGame.style_cards(kicker, True) + ' kicker' if kicker else '']),
+    'Player Lost Money': lambda player_id, player_name: player_name + ' has been removed from the game'
     }
 
     @staticmethod
@@ -313,7 +322,6 @@ class FbPokerGame(PokerGame):
             send = FbPokerGame.IO_actions[kwargs.pop('_id')](**kwargs)
         if send:
             DEALER.sendMessage(send, thread_id = self.table_id, thread_type = ThreadType.GROUP)
-
 
 # this has to be done before every game
 def collect_leftover_money():

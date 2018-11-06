@@ -23,9 +23,3 @@ there are two possibilities for a player that has won or split the pot with play
 - create user data in greater detail (folded hands,...)
 - fbmessinger log user doings
 - settle the players who lost all their money problem and their refills
-
-
-- raises on flop if has something
-- reraises as a bluff
-- raises on open straight draws, checks on gutshots
-- tries to bluff straights, when one card is needed

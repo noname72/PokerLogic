@@ -12,7 +12,7 @@ from lib.methods import FileMethods, TimeMethods
 # this is the documentation and the link is sent to every new player
 DOCUMENTATION_URL = 'https://kuco23.github.io/pokermessinger/documentation.html'
 
-# this can be changed to any Facebook account
+# this can be set to any Facebook account 
 if __name__ == '__main__':
     DEALER_MAIL = input('Dealer email: ')
     DEALER_PASSWORD = input('Dealer pass: ')

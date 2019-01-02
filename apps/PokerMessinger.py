@@ -6,8 +6,8 @@ from pathlib import Path
 from fbchat import Client
 path.append(str(Path().cwd().parent)) # so i can use absolute paths
 from fbchat.models import *
+from lib import sqlmeths, timemeths
 from lib.pokerlib import PlayerGroup, Player, PokerGame
-from lib.methods import FileMethods, TimeMethods
 
 # this is the documentation and the link is sent to every new player
 DOCUMENTATION_URL = 'https://kuco23.github.io/pokermessinger/documentation.html'
@@ -155,42 +155,52 @@ class Dealer(Client):
 
         # messages sent privately to the dealer (data requests / data modification requests)
         elif kwargs['thread_type'] == ThreadType.USER and message in PRIVATE_STATEMETNS:
-            test_path = [path for path in Path(DATABASE).iterdir() if path.suffix == '.json' and path.name[:-5] == author_id]
-            assert len(test_path) <= 1
+            with sqlmeths.connect(DATABASE) as connection:
+                assert connection
+                sql_data = sqlmeths.getasdict(connection, 'fbid', thread_id)
 
             # player wants to be signed up
             if message == INITIALIZE_PLAYER:
-                if test_path:
-                    self.sendMessage('You are already in the database', thread_id = thread_id)
+                if sql_data:
+                    self.sendMessage('You are already in the database',
+                    thread_id = thread_id)
                 else:
-                    user_info = self.fetchUserInfo(author_id)[author_id]
-                    FileMethods.create_datafile(DATABASE / (user_info.uid + '.json'),
-                    {"name": user_info.name, "money": PLAYER_STARTING_MONEY, "table_money": {}, "timestamp": TimeMethods.formatted_timestamp()})
-                    self.sendMessage(f'''Welcome {user_info.name}!, {PLAYER_STARTING_MONEY} was added to your account.\n
-                    For more info about the game check the documentation\n{DOCUMENTATION_URL}''', thread_id = thread_id)
+                    sqlmeths.insert(DATABASE, 'players',
+                        name = self.fetchUserInfo(author_id)[author_id].name,
+                        money = PLAYER_STARTING_MONEY,
+                        timestamp = timemeths.formatted_timestamp()
+                    )
+                    self.sendMessage(f'''
+                    Welcome {user_info.name}!,
+                    {PLAYER_STARTING_MONEY} was added to your account.\n
+                    For more info about the game check the documentation\n
+                    {DOCUMENTATION_URL}''',
+                    thread_id = thread_id)
 
-            # if the author is not inside the database notify the author and end the execution
-            elif not test_path:
-                return self.sendMessage(f'You are not in the database, type "{INITIALIZE_PLAYER}" to be added', thread_id = thread_id)
-
-            confirmed_path = test_path[0]
-            data = FileMethods.fetch_database_json(confirmed_path)
+            # if the author is not inside the database
+            # notify the author and end the execution
+            elif not sql_data:
+                return self.sendMessage(f'''You are not in the database,
+                type "{INITIALIZE_PLAYER}" to be added''',
+                thread_id = thread_id)
 
             # player requested to see the money from the database
             if message == SHOW_USER_MONEY:
-                self.sendMessage(f"You have {data['money']} left", thread_id = author_id, thread_type = ThreadType.USER)
+                self.sendMessage(f"You have {sql_data['money']} left",
+                thread_id = author_id, thread_type = ThreadType.USER)
 
             elif message == REQUEST_FOR_MONEY:
-                timestamp = TimeMethods.formatted_timestamp()
-                diff = TimeMethods.get_time_diff(timestamp, data['timestamp'])
+                timestamp = timemeths.formatted_timestamp()
+                diff = timemeths.get_time_diff(timestamp, sql_data['timestamp'])
 
                 if diff['days'] or diff['hours'] >= MONEY_WAITING_PERIOD:
-                    data['timestamp'] = timestamp
-                    data['money'] += MONEY_ADD_PER_PERIOD
-                    FileMethods.send_to_database(confirmed_path, data)
-                    self.sendMessage(str(MONEY_ADD_PER_PERIOD) + " successfully added", thread_id = thread_id)
+                    sql_data['timestamp'] = timestamp
+                    sql_data['money'] += MONEY_ADD_PER_PERIOD
+                    sqlmeths.update(DATABASE, 'players', sql_data, {'fbid': thread_id})
+                    self.sendMessage(str(MONEY_ADD_PER_PERIOD) + " successfully added",
+                    thread_id = thread_id)
                 else:
-                    remainder = TimeMethods.get_time_remainder(timestamp, data['timestamp'], MONEY_WAITING_PERIOD)
+                    remainder = timemeths.get_time_remainder(timestamp, data['timestamp'], MONEY_WAITING_PERIOD)
                     to_wait = ', '.join([str(remainder[timeframe]) + ' ' + timeframe for timeframe in remainder if remainder[timeframe]])
                     self.sendMessage("Money Can Be Requested in " + to_wait, thread_id = thread_id)
 
@@ -217,19 +227,16 @@ class Dealer(Client):
 class FbPlayer(Player):
 
     def __init__(self, name: str, fb_id: str, table_id: str):
-        self.data_path = DATABASE / (fb_id + '.json')
 
         self.name = name
         self.fb_id = fb_id
         self.table_id = table_id
 
-        assert self.data_path.is_file() # player has to already have a datafile to be initialized
-
-        file_data = FileMethods.fetch_database_json(self.data_path)
-        money = TABLE_MONEY if file_data['money'] >= TABLE_MONEY else file_data['money']
-        file_data['money'] -= money
-        file_data['table_money'][self.table_id] = money
-        FileMethods.send_to_database(self.data_path, file_data)
+        db_data = sqlmeths.getasdict(DATABASE, 'players', 'fbid', fb_id)
+        money = TABLE_MONEY if db_data['money'] >= TABLE_MONEY else db_data['money']
+        db_data['money'] -= money
+        #db_data['table_money'][self.table_id] = money
+        sqlmeths.update(DATABASE, 'people', db_data, {'fbid': fbi_id})
 
         super().__init__(self.name, money)
         self.id = fb_id
@@ -238,18 +245,19 @@ class FbPlayer(Player):
     def money(self):
         return self.__money
 
+    #############
     @money.setter
     def money(self, value):
         self.__money = value
-        data = FileMethods.fetch_database_json(self.data_path)
+        data = sqlmeths.getasdict(DATABASE, 'tablemoneys', 'fbid': self.fb_id)
         data['table_money'][self.table_id] = value
-        FileMethods.send_to_database(self.data_path, data)
+        sqlmeths.update(self.data_path, data)
 
     def refill_money(self):
         if self.money >= TABLE_MONEY:
             return False
 
-        file_data = FileMethods.fetch_database_json(self.data_path)
+        file_data = sqlmeths.getasdict(DATABASE, 'players', 'fbid': self.fb_id)
         __money = file_data['money']
         money_to_fill = TABLE_MONEY - self.money
 
@@ -263,12 +271,14 @@ class FbPlayer(Player):
             return __money
 
     # called when player leaves the table (or game ends)
+    ##########
     def resolve(self):
-        file_data = FileMethods.fetch_database_json(self.data_path)
-        file_data['money'] += file_data['table_money'][self.table_id]
+        pl_data = sqlmeths.getasdict(DATABASE, 'players', 'fbid': self.fb_id)
+        tblmoney_data = sqlmeths.getdicts(DATABASE, 'playermoneys', 'fbid': self.fb_id)
+        pl_data['money'] += pl_data['table_money'][self.table_id]
         self.money = 0
-        file_data['table_money'].pop(self.table_id)
-        FileMethods.send_to_database(self.data_path, file_data)
+        pl_data['table_money'].pop(self.table_id)
+        sqlmeths.send_to_database(self.data_path, pl_data)
 
 
 class FbPokerGame(PokerGame):
@@ -321,19 +331,32 @@ class FbPokerGame(PokerGame):
             DEALER.sendMessage(send, thread_id = self.table_id, thread_type = ThreadType.GROUP)
 
 # this has to be done before every game
-def collect_leftover_money():
-    for file in Path(DATABASE).iterdir():
-        if file.suffix == '.json':
-            file_data = FileMethods.fetch_database_json(file)
-            file_data['money'] += sum(file_data['table_money'][table] for table in file_data['table_money'])
-            file_data['table_money'] = {}
-            FileMethods.send_to_database(file, file_data)
+for file in Path(DATABASE).iterdir():
+    if file.suffix == '.json':
+        file_data = sqlmeths.fetch_database_json(file)
+        file_data['money'] += sum(file_data['table_money'][table] for table in file_data['table_money'])
+        file_data['table_money'] = {}
+        sqlmeths.send_to_database(file, file_data)
 
-collect_leftover_money()
-
+players_sql = '''
+CREATE TABLE IF NOT EXISTS players(
+    id integer PRIMARY KEY,
+    fbid integer NOT NULL,
+    name text NOT NULL,
+    money integer,
+    timestamp text
+)
+'''
+tablemoneys_sql = '''
+CREATE TABLE IF NOT EXISTS tablemoneys(
+    id integer PRIMARY KEY,
+    fbid integer NOT NULL,
+    tblid integer NOT NULL,
+    money integer
+)
+'''
 # game continuation
 if __name__ == '__main__':
-    DATABASE.mkdir(parents=True, exist_ok=True) # make the directory if one doesn't exist
     DEALER_MAIL = input('Dealer email: ')
     DEALER_PASSWORD = input('Dealer password: ')
     DEALER = Dealer(DEALER_MAIL, DEALER_PASSWORD)

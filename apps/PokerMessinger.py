@@ -12,7 +12,7 @@ from lib.pokerlib import PlayerGroup, Player, PokerGame
 # this is the documentation and the link is sent to every new player
 DOCUMENTATION_URL = 'https://kuco23.github.io/pokermessinger/documentation.html'
 
-DATABASE = Path('data') # database of player .json files
+DATABASE = 'playerdb.db' # player db with people and peoplemoneys tables
 
 TABLE_MONEY = 1000 # money that a new player gets
 BIG_BLIND = TABLE_MONEY // 50 # big_blinds at every table
@@ -38,7 +38,8 @@ INITIALIZE_PLAYER = 'sign up' # initializes player and gives him the starting mo
 SHOW_USER_MONEY = 'show money' # shows player main money
 REQUEST_FOR_MONEY = 'gimme moneyz' # requests for MONEY_ADD_PER_PERIOD
 
-GAME_MANIPULATION_STATEMENTS = [INITIALIZE_GAME, START_GAME, TOGGLE_LAST_ROUND, LEAVE_TABLE, BUY_IN, REFILL_TABLE_MONEY, SHOW_USER_TABLE_MONEY]
+GAME_MANIPULATION_STATEMENTS = [INITIALIZE_GAME, START_GAME, TOGGLE_LAST_ROUND,
+LEAVE_TABLE, BUY_IN, REFILL_TABLE_MONEY, SHOW_USER_TABLE_MONEY]
 PRIVATE_STATEMETNS = [SHOW_USER_MONEY, REQUEST_FOR_MONEY, INITIALIZE_PLAYER]
 MID_GAME_STATEMENTS = ['call', 'fold', 'check', 'all in'] # these must remain the same
 STATEMENTS = GAME_MANIPULATION_STATEMENTS + PRIVATE_STATEMETNS + MID_GAME_STATEMENTS
@@ -78,15 +79,19 @@ class Dealer(Client):
             if message == INITIALIZE_GAME:
                 if not game:
                     self.games[thread_id] = FbPokerGame(PlayerGroup([]), BIG_BLIND, thread_id)
-                    self.sendMessage('This group was initialized as a poker table', thread_id = thread_id, thread_type = ThreadType.GROUP)
+                    self.sendMessage('This group was initialized as a poker table',
+                    thread_id = thread_id, thread_type = ThreadType.GROUP)
                 else:
-                    self.sendMessage("This group is already initialized as a poker table", thread_id = thread_id, thread_type = ThreadType.GROUP)
+                    self.sendMessage("This group is already initialized as a poker table",
+                    thread_id = thread_id, thread_type = ThreadType.GROUP)
 
             elif message == START_GAME:
                 if not game:
-                    self.sendMessage('This group had not yet been initialized as a poker table', thread_id = thread_id, thread_type = ThreadType.GROUP)
+                    self.sendMessage('This group had not yet been initialized as a poker table',
+                    thread_id = thread_id, thread_type = ThreadType.GROUP)
                 elif game and game.round:
-                    self.sendMessage('Rounds are already being played on this table', thread_id = thread_id, thread_type = ThreadType.GROUP)
+                    self.sendMessage('Rounds are already being played on this table',
+                    thread_id = thread_id, thread_type = ThreadType.GROUP)
                 elif game and not game.round:
                     if not game.is_ok():
                         self.sendMessage('Not enough players have bought into the game. To buy in, type "buy in"',
@@ -111,10 +116,12 @@ class Dealer(Client):
                     try:
                         player = FbPlayer(user_info.name, user_info.uid, thread_id)
                         game.on_player_join(player)
-                        self.sendMessage(user_info.name + ' has bought into the game with ' + str(player.money),
+                        self.sendMessage(user_info.name +
+                        ' has bought into the game with ' + str(player.money),
                         thread_id = thread_id, thread_type = ThreadType.GROUP)
                     except AssertionError:
-                        self.sendMessage('You have not signed up yet', thread_id = thread_id, thread_type = ThreadType.GROUP)
+                        self.sendMessage('You have not signed up yet',
+                        thread_id = thread_id, thread_type = ThreadType.GROUP)
                         return None
 
             # from now on everything requires for a game to be played and that a player in that game wrote the message
@@ -126,11 +133,13 @@ class Dealer(Client):
                 if game.round:
                     game.round.exit_after_this = not game.round.exit_after_this
                     _send = 'game will end after this round' if game.round.exit_after_this else 'game will continue'
-                    self.sendMessage(_send, thread_id = thread_id, thread_type = ThreadType.GROUP)
+                    self.sendMessage(_send, thread_id = thread_id,
+                    thread_type = ThreadType.GROUP)
 
             # player wants to get all money out of the table (player has to be folded or rounds not played)
             elif message == LEAVE_TABLE:
-                self.sendMessage(player.name + ' has left the game', thread_id = thread_id, thread_type = ThreadType.GROUP)
+                self.sendMessage(player.name + ' has left the game',
+                thread_id = thread_id, thread_type = ThreadType.GROUP)
                 game.on_player_leave(player)
                 player.resolve()
 
@@ -139,12 +148,14 @@ class Dealer(Client):
                 if not game.round or player not in game.round.players or player.is_folded:
                     money_filled = player.refill_money()
                     if money_filled is not False:
-                        self.sendMessage('Money successfully refilled by ' + str(money_filled) + ' to ' + str(player.money),
+                        self.sendMessage('Money successfully refilled by ' +
+                        str(money_filled) + ' to ' + str(player.money),
                         thread_id = thread_id, thread_type = ThreadType.GROUP)
 
             # player requested to see the money in a specific game he is playing (THIS SHOULD BE GONE when a better solution arises)
             elif message == SHOW_USER_TABLE_MONEY:
-                self.sendMessage('You Have ' + str(player.money), thread_id = thread_id, thread_type = ThreadType.GROUP)
+                self.sendMessage('You Have ' + str(player.money),
+                thread_id = thread_id, thread_type = ThreadType.GROUP)
 
         # message within active round was sent (game continuation)
         elif game and game.round:
@@ -155,9 +166,7 @@ class Dealer(Client):
 
         # messages sent privately to the dealer (data requests / data modification requests)
         elif kwargs['thread_type'] == ThreadType.USER and message in PRIVATE_STATEMETNS:
-            with sqlmeths.connect(DATABASE) as connection:
-                assert connection
-                sql_data = sqlmeths.getasdict(connection, 'fbid', thread_id)
+            sql_data = sqlmeths.getasdict(DATABASE, 'players', 'fbid', thread_id)
 
             # player wants to be signed up
             if message == INITIALIZE_PLAYER:
@@ -202,7 +211,8 @@ class Dealer(Client):
                 else:
                     remainder = timemeths.get_time_remainder(timestamp, data['timestamp'], MONEY_WAITING_PERIOD)
                     to_wait = ', '.join([str(remainder[timeframe]) + ' ' + timeframe for timeframe in remainder if remainder[timeframe]])
-                    self.sendMessage("Money Can Be Requested in " + to_wait, thread_id = thread_id)
+                    self.sendMessage("Money Can Be Requested in " + to_wait,
+                    thread_id = thread_id)
 
     # this happens ONLY when the game is forcibly ended by removing the dealer mid-game
     def remove_game(self, table_id):
@@ -235,7 +245,8 @@ class FbPlayer(Player):
         db_data = sqlmeths.getasdict(DATABASE, 'players', 'fbid', fb_id)
         money = TABLE_MONEY if db_data['money'] >= TABLE_MONEY else db_data['money']
         db_data['money'] -= money
-        #db_data['table_money'][self.table_id] = money
+        sqlmeths.insert(DATABASE, 'peoplemoneys',
+        fbid=fb_id, tblid=table_id, money=money)
         sqlmeths.update(DATABASE, 'people', db_data, {'fbid': fbi_id})
 
         super().__init__(self.name, money)
@@ -245,13 +256,11 @@ class FbPlayer(Player):
     def money(self):
         return self.__money
 
-    #############
     @money.setter
     def money(self, value):
         self.__money = value
-        data = sqlmeths.getasdict(DATABASE, 'tablemoneys', 'fbid': self.fb_id)
-        data['table_money'][self.table_id] = value
-        sqlmeths.update(self.data_path, data)
+        sqlmeths.update(DATABASE, 'peoplemoneys', {'money': value},
+        {'fbid': self.fb_id, 'tblid': self.table_id})
 
     def refill_money(self):
         if self.money >= TABLE_MONEY:
@@ -274,11 +283,13 @@ class FbPlayer(Player):
     ##########
     def resolve(self):
         pl_data = sqlmeths.getasdict(DATABASE, 'players', 'fbid': self.fb_id)
-        tblmoney_data = sqlmeths.getdicts(DATABASE, 'playermoneys', 'fbid': self.fb_id)
-        pl_data['money'] += pl_data['table_money'][self.table_id]
+        tblmoney_data = sqlmeths.getdicts(DATABASE, 'playermoneys',
+        'tblid', 'money', {'fbid': self.fb_id})
+        pl_data['money'] += tblmoney_data[self.table_id]
         self.money = 0
-        pl_data['table_money'].pop(self.table_id)
-        sqlmeths.send_to_database(self.data_path, pl_data)
+        sqlmeths.deletefromtable(DATABASE, 'tablemoneys',
+        {'fbid': self.fb_id, 'tblid': self.table_id})
+        sqlmeths.update(DATABASE, 'players', pl_data, {'fbid': self.fb_id})
 
 
 class FbPokerGame(PokerGame):
@@ -305,7 +316,7 @@ class FbPokerGame(PokerGame):
         else:
             return '+'.join(VALUES[kick] for kick in cards)
 
-    def __init__(self, players: PlayerGroup, big_blind: int, table_id: str): # players is a PlayerGroup object of FbPlayers
+    def __init__(self, players: PlayerGroup, big_blind: int, table_id: str):
         super().__init__(players, big_blind)
         self.table_id = table_id
 
@@ -319,7 +330,8 @@ class FbPokerGame(PokerGame):
         elif kwargs['_id'] in FbPokerGame.IO_actions:
             send = FbPokerGame.IO_actions[kwargs.pop('_id')](**kwargs)
         if send:
-            DEALER.sendMessage(send, thread_id = player.fb_id, thread_type = ThreadType.USER)
+            DEALER.sendMessage(send, thread_id = player.fb_id,
+            thread_type = ThreadType.USER)
 
     def public_out(self, text = None, **kwargs):
         send = None
@@ -328,15 +340,16 @@ class FbPokerGame(PokerGame):
         elif kwargs['_id'] in FbPokerGame.IO_actions:
             send = FbPokerGame.IO_actions[kwargs.pop('_id')](**kwargs)
         if send:
-            DEALER.sendMessage(send, thread_id = self.table_id, thread_type = ThreadType.GROUP)
+            DEALER.sendMessage(send, thread_id = self.table_id,
+            thread_type = ThreadType.GROUP)
 
 # this has to be done before every game
-for file in Path(DATABASE).iterdir():
-    if file.suffix == '.json':
-        file_data = sqlmeths.fetch_database_json(file)
-        file_data['money'] += sum(file_data['table_money'][table] for table in file_data['table_money'])
-        file_data['table_money'] = {}
-        sqlmeths.send_to_database(file, file_data)
+for fbid in sqlmeths.getcol(DATABASE, 'players', 'fbid'):
+    leftovers = sqlmeths.getasdics(DATABASE, 'peoplemoneys', 'tblid', 'money', {'fbid': fbid})
+    plyrdata = sqlmeths.getasdic(DATABASE, 'people', 'fbid', fbid)
+    plyrdata['money'] += sum(leftovers.values())
+    sqlmeths.update(DATABASE, 'people', plyrdata, {'fbid': fbid})
+sqlmeths.emptytable(DATABASE, 'peoplemoneys')
 
 players_sql = '''
 CREATE TABLE IF NOT EXISTS players(
@@ -355,6 +368,8 @@ CREATE TABLE IF NOT EXISTS tablemoneys(
     money integer
 )
 '''
+sqlmeths.executesql(DATABASE, players_sql, tablemoneys_sql)
+
 # game continuation
 if __name__ == '__main__':
     DEALER_MAIL = input('Dealer email: ')

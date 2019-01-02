@@ -614,7 +614,8 @@ class PokerGame:
 
             # arranges players who have gone all in by their pot contribution size (from smallest to largest)
             # player can be all in and folded if he left after going all in and had status is_folded set from outside the round instance
-            all_ins_sorted = [player for _, player in sorted([[sum(player.money_given), player] for player in this.players if player.is_all_in and not player.is_folded])]
+            all_ins_sorted = [player for _, player in sorted([[sum(player.money_given), player]
+            for player in this.players if player.is_all_in and not player.is_folded])]
             not_all_in_active = [player for player in this.players if not (player.is_all_in or player.is_folded)]
             # players from smallest to largest stake in pot (not all_in's stake doesnt matter as long as they are last)
             # subgame means the players who are included in the competition for their bought part of the pot

@@ -11,12 +11,6 @@ class FileMethods:
             print(dumps(base_data), file=raw)
 
     @staticmethod
-    def fetch_database_txt(path) -> str:
-        with open(path, 'r', encoding='UTF-8') as file:
-            txt_list = file.readlines()
-        return ''.join(txt_list)
-
-    @staticmethod
     def fetch_database_json(path) -> dict:
         with open(path, 'r') as raw:
             data_dict = load(raw)

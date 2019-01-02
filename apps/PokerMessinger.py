@@ -12,11 +12,6 @@ from lib.methods import FileMethods, TimeMethods
 # this is the documentation and the link is sent to every new player
 DOCUMENTATION_URL = 'https://kuco23.github.io/pokermessinger/documentation.html'
 
-# this can be set to any Facebook account 
-if __name__ == '__main__':
-    DEALER_MAIL = input('Dealer email: ')
-    DEALER_PASSWORD = input('Dealer pass: ')
-
 DATABASE = Path('data') # database of player .json files
 
 TABLE_MONEY = 1000 # money that a new player gets
@@ -113,10 +108,14 @@ class Dealer(Client):
                     thread_id = thread_id, thread_type = ThreadType.GROUP)
                 else:
                     user_info = self.fetchUserInfo(author_id)[author_id]
-                    player = FbPlayer(user_info.name, user_info.uid, thread_id)
-                    game.on_player_join(player)
-                    self.sendMessage(user_info.name + ' has bought into the game with ' + str(player.money),
-                    thread_id = thread_id, thread_type = ThreadType.GROUP)
+                    try:
+                        player = FbPlayer(user_info.name, user_info.uid, thread_id)
+                        game.on_player_join(player)
+                        self.sendMessage(user_info.name + ' has bought into the game with ' + str(player.money),
+                        thread_id = thread_id, thread_type = ThreadType.GROUP)
+                    except AssertionError:
+                        self.sendMessage('You have not signed up yet', thread_id = thread_id, thread_type = ThreadType.GROUP)
+                        return None
 
             # from now on everything requires for a game to be played and that a player in that game wrote the message
             player = game.all_players['fb_id', author_id] if game else None
@@ -171,7 +170,7 @@ class Dealer(Client):
                     For more info about the game check the documentation\n{DOCUMENTATION_URL}''', thread_id = thread_id)
 
             # if the author is not inside the database notify the author and end the execution
-            if not test_path:
+            elif not test_path:
                 return self.sendMessage(f'You are not in the database, type "{INITIALIZE_PLAYER}" to be added', thread_id = thread_id)
 
             confirmed_path = test_path[0]
@@ -200,9 +199,6 @@ class Dealer(Client):
         for player in self.games.pop(table_id).all_players:
             player.resolve()
 
-    def fetch_uids_on_table(self, table_id) -> set: # without dealer (dealer on the table is trivial)
-        return {uid for uid in self.fetchGroupInfo(table_id)[table_id].participants if uid != self.uid} # set of user ids
-
     ## these functions serve non-essential purpuse of dealer interaction with single user
 
     # this makes a random threat to user_id if there are threats
@@ -213,9 +209,10 @@ class Dealer(Client):
             choice_list = list(pth.iterdir())
             if choice_list:
                 file_name = choice(choice_list)
-                send = FileMethods.fetch_database_txt(file_name)
-                return self.sendMessage(send.format(name = user_name), thread_id = user_id, thread_type = ThreadType.USER)
-
+                with open(file_name, 'r', encoding='UTF-8') as file:
+                    send = ''.join(file.readlines())
+                return self.sendMessage(send.format(name = user_name),
+                thread_id = user_id, thread_type = ThreadType.USER)
 
 class FbPlayer(Player):
 
@@ -337,5 +334,7 @@ collect_leftover_money()
 # game continuation
 if __name__ == '__main__':
     DATABASE.mkdir(parents=True, exist_ok=True) # make the directory if one doesn't exist
+    DEALER_MAIL = input('Dealer email: ')
+    DEALER_PASSWORD = input('Dealer password: ')
     DEALER = Dealer(DEALER_MAIL, DEALER_PASSWORD)
     DEALER.listen()

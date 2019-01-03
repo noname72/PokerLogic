@@ -207,13 +207,17 @@ class HandParser:
 # this was just needed constantly within PokerGame
 TABLE_DICT = {0: 0, 3: 1, 4: 2, 5: 3}
 
-# Wrapper around a list of Player objects (used onlly for getting info, not setting; PokerGame is used for manipulating/setting data to players)
+# Wrapper around a list of Player objects
+# (used onlly for getting info, not setting;
+# PokerGame is used for manipulating/setting data to players)
 # type(self) is used if this class should be baseclassed
 class PlayerGroup(list):
 
     def __init__(self, players: list):
-        assert not any([players[i - 1].id == players[i].id for i in range(1, len(players))]) # all names must differ
-        assert all([isinstance(player, Player) for player in self]) # every player in list has to be an object derived from Player class (or its baseclass)
+        # all ids must differ
+        assert not any([players[i - 1].id == players[i].id for i in range(1, len(players))])
+        # every player in list has to be an object derived from Player class (or its baseclass)
+        assert all([isinstance(player, Player) for player in self])
         super().__init__(players)
 
     def __getitem__(self, i):

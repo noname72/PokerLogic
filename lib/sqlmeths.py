@@ -1,10 +1,8 @@
-import sqlite3
-from pathlib import Path
 from contextlib import contextmanager
+import sqlite3
 
 @contextmanager
 def connect(file):
-    if isinstance(file, Path): file = str(file)
     try:
         con = sqlite3.connect(file)
         yield con
@@ -13,53 +11,52 @@ def connect(file):
     except sqlite3.Error as err:
         yield print(err)
 
-def safetywrapper(fun):
+def safesqlexe(fun):
     def retfun(dbfile, *args, **kwargs):
         try:
             with connect(dbfile) as con:
                 ret = fun(con, *args, **kwargs)
-                return ret if ret is not None else True
+            return ret if ret is not None else True
         except sqlite3.Error as e:
             print(e)
     return retfun
 
-@safetywrapper
+@safesqlexe
 def executesql(con, *sqls):
     for sql in sqls: con.cursor().execute(sql)
 
-@safetywrapper
+@safesqlexe
 def insert(con, table, **vals):
     strkeys = map(str, vals.keys())
     sql = f'''INSERT INTO {table}({', '.join(strkeys)})
-              VALUES({', '.join(['?'] * len(vals))})'''
+          VALUES({', '.join(['?'] * len(vals))})'''
     con.cursor().execute(sql, tuple(vals.values()))
 
-@safetywrapper
+@safesqlexe
 def update(con, table, valsdic, wheredic):
     vals = ', '.join([f'{key}=?' for key in valsdic])
-    where = ', '.join([f'{key}=?' for key in wheredic])
-    sql = f'''UPDATE {table}
-              SET {vals}
-              WHERE {where}'''
+    where = ' AND '.join([f'{key}=?' for key in wheredic])
+    sql = f'''UPDATE {table} SET {vals} WHERE {where}'''
+    print(tuple(valsdic.values()) + tuple(wheredic.values()))
     con.cursor().execute(sql, tuple(valsdic.values()) +
                               tuple(wheredic.values()))
 
-@safetywrapper
+@safesqlexe
 def deletefromtable(con, table, wheredic):
-    where = ', '.join([f'{key}=?' for key in wheredic])
+    where = ' AND '.join([f'{key}=?' for key in wheredic])
     sql = f'DELETE FROM {table} WHERE {where}'
     con.cursor().execute(sql, tuple(wheredic.values()))
-@safetywrapper
+@safesqlexe
 def emptytable(con, table):
     con.cursor().execute(f'DELETE FROM {table}')
 
-@safetywrapper
+@safesqlexe
 def getcol(con, table, colname):
     cur = con.cursor()
     cur.execute(f'SELECT {colname} FROM {table}')
     return cur.fetchall()
 
-@safetywrapper
+@safesqlexe
 def getasdict(con, table, idname, idval):
     cur = con.cursor()
     cur.execute(f'PRAGMA table_info({table})')
@@ -69,9 +66,9 @@ def getasdict(con, table, idname, idval):
     if len(vals) == 1: return dict(tuple(zip(keys, vals[0])))
     else: return {}
 
-@safetywrapper
+@safesqlexe
 def getasdicts(con, table, key, value, wheredic):
-    formatted = ', '.join([f'{wkey}=?' for wkey in wheredic])
+    formatted = ' AND '.join([f'{wkey}=?' for wkey in wheredic])
     sql = f'SELECT {key}, {value} FROM {table} WHERE {formatted}'
     cur = con.cursor()
     cur.execute(sql, tuple(wheredic.values()))

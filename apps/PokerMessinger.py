@@ -12,7 +12,8 @@ from lib.pokerlib import PlayerGroup, Player, PokerGame
 # this is the documentation and the link is sent to every new player
 DOCUMENTATION_URL = 'https://kuco23.github.io/pokermessinger/documentation.html'
 
-DATABASE = 'playerdb.db' # player db with people and peoplemoneys tables
+DATABASE = 'playerdb.db' # player db with players and tablemoneys tables
+with sqlmeths.connect(DATABASE) as dbCon: pass
 
 TABLE_MONEY = 1000 # money that a new player gets
 BIG_BLIND = TABLE_MONEY // 50 # big_blinds at every table
@@ -106,7 +107,8 @@ class Dealer(Client):
                     self.sendMessage('This group had not yet been initialized as a poker table',
                     thread_id = thread_id, thread_type = ThreadType.GROUP)
                 elif game.players['fb_id', author_id]:
-                    self.sendMessage('You are already playing in this game. If you wish to refill your money use "{REFILL_TABLE_MONEY}" statement',
+                    self.sendMessage('''You are already playing in this game.
+                    If you wish to refill your money use "{REFILL_TABLE_MONEY}" statement''',
                     thread_id = thread_id, thread_type = ThreadType.GROUP)
                 elif len(game.all_players) >= 9:
                     self.sendMessage('There is already a maximum amount of players playing on this table',
@@ -159,7 +161,6 @@ class Dealer(Client):
 
         # message within active round was sent (game continuation)
         elif game and game.round:
-
             # message was sent from current player in game round
             if author_id == game.round.current_player.fb_id:
                 game.round.process_action(message) # game continuation
@@ -174,16 +175,17 @@ class Dealer(Client):
                     self.sendMessage('You are already in the database',
                     thread_id = thread_id)
                 else:
+                    user_info = self.fetchUserInfo(author_id)[author_id]
                     sqlmeths.insert(DATABASE, 'players',
-                        name = self.fetchUserInfo(author_id)[author_id].name,
+                        name = user_info.name,
+                        fbid = thread_id,
                         money = PLAYER_STARTING_MONEY,
                         timestamp = timemeths.formatted_timestamp()
                     )
-                    self.sendMessage(f'''
-                    Welcome {user_info.name}!,
-                    {PLAYER_STARTING_MONEY} was added to your account.\n
-                    For more info about the game check the documentation\n
-                    {DOCUMENTATION_URL}''',
+                    self.sendMessage(f'''Welcome {user_info.name}!\n''' +
+                    f'''{PLAYER_STARTING_MONEY} was added to your account.\n''' +
+                    f'''For more info about the game check the documentation\n''' +
+                    f'''{DOCUMENTATION_URL}''',
                     thread_id = thread_id)
 
             # if the author is not inside the database
@@ -245,9 +247,9 @@ class FbPlayer(Player):
         db_data = sqlmeths.getasdict(DATABASE, 'players', 'fbid', fb_id)
         money = TABLE_MONEY if db_data['money'] >= TABLE_MONEY else db_data['money']
         db_data['money'] -= money
-        sqlmeths.insert(DATABASE, 'peoplemoneys',
+        sqlmeths.insert(DATABASE, 'tablemoneys',
         fbid=fb_id, tblid=table_id, money=money)
-        sqlmeths.update(DATABASE, 'people', db_data, {'fbid': fbi_id})
+        sqlmeths.update(DATABASE, 'players', db_data, {'fbid': fb_id})
 
         super().__init__(self.name, money)
         self.id = fb_id
@@ -259,14 +261,14 @@ class FbPlayer(Player):
     @money.setter
     def money(self, value):
         self.__money = value
-        sqlmeths.update(DATABASE, 'peoplemoneys', {'money': value},
+        sqlmeths.update(DATABASE, 'tablemoneys', {'money': value},
         {'fbid': self.fb_id, 'tblid': self.table_id})
 
     def refill_money(self):
         if self.money >= TABLE_MONEY:
             return False
 
-        file_data = sqlmeths.getasdict(DATABASE, 'players', 'fbid': self.fb_id)
+        file_data = sqlmeths.getasdict(DATABASE, 'players', 'fbid', self.fb_id)
         __money = file_data['money']
         money_to_fill = TABLE_MONEY - self.money
 
@@ -282,7 +284,7 @@ class FbPlayer(Player):
     # called when player leaves the table (or game ends)
     ##########
     def resolve(self):
-        pl_data = sqlmeths.getasdict(DATABASE, 'players', 'fbid': self.fb_id)
+        pl_data = sqlmeths.getasdict(DATABASE, 'players', 'fbid', self.fb_id)
         tblmoney_data = sqlmeths.getdicts(DATABASE, 'playermoneys',
         'tblid', 'money', {'fbid': self.fb_id})
         pl_data['money'] += tblmoney_data[self.table_id]
@@ -343,14 +345,6 @@ class FbPokerGame(PokerGame):
             DEALER.sendMessage(send, thread_id = self.table_id,
             thread_type = ThreadType.GROUP)
 
-# this has to be done before every game
-for fbid in sqlmeths.getcol(DATABASE, 'players', 'fbid'):
-    leftovers = sqlmeths.getasdics(DATABASE, 'peoplemoneys', 'tblid', 'money', {'fbid': fbid})
-    plyrdata = sqlmeths.getasdic(DATABASE, 'people', 'fbid', fbid)
-    plyrdata['money'] += sum(leftovers.values())
-    sqlmeths.update(DATABASE, 'people', plyrdata, {'fbid': fbid})
-sqlmeths.emptytable(DATABASE, 'peoplemoneys')
-
 players_sql = '''
 CREATE TABLE IF NOT EXISTS players(
     id integer PRIMARY KEY,
@@ -370,9 +364,19 @@ CREATE TABLE IF NOT EXISTS tablemoneys(
 '''
 sqlmeths.executesql(DATABASE, players_sql, tablemoneys_sql)
 
+# this has to be done before every app rerun
+for fbid in sqlmeths.getcol(DATABASE, 'players', 'fbid'):
+    fbid = fbid[0]
+    leftovers = sqlmeths.getasdicts(DATABASE, 'tablemoneys', 'tblid', 'money', {'fbid': fbid})
+    plyrdata = sqlmeths.getasdict(DATABASE, 'players', 'fbid', fbid)
+    plyrdata['money'] += sum(leftovers.values())
+    sqlmeths.update(DATABASE, 'players', plyrdata, {'fbid': fbid})
+sqlmeths.emptytable(DATABASE, 'tablemoneys')
+
 # game continuation
 if __name__ == '__main__':
-    DEALER_MAIL = input('Dealer email: ')
-    DEALER_PASSWORD = input('Dealer password: ')
+    #DEALER_MAIL = input('Dealer email: ')
+    #DEALER_PASSWORD = input('Dealer password: ')
+    DEALER_MAIL, DEALER_PASSWORD = 'amahmoh23@gamil.com', 'lagrunge'
     DEALER = Dealer(DEALER_MAIL, DEALER_PASSWORD)
     DEALER.listen()

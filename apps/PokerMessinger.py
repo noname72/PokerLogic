@@ -282,10 +282,9 @@ class FbPlayer(Player):
             return __money
 
     # called when player leaves the table (or game ends)
-    ##########
     def resolve(self):
         pl_data = sqlmeths.getasdict(DATABASE, 'players', 'fbid', self.fb_id)
-        tblmoney_data = sqlmeths.getdicts(DATABASE, 'playermoneys',
+        tblmoney_data = sqlmeths.getasdicts(DATABASE, 'playermoneys',
         'tblid', 'money', {'fbid': self.fb_id})
         pl_data['money'] += tblmoney_data[self.table_id]
         self.money = 0
@@ -345,6 +344,7 @@ class FbPokerGame(PokerGame):
             DEALER.sendMessage(send, thread_id = self.table_id,
             thread_type = ThreadType.GROUP)
 
+
 players_sql = '''
 CREATE TABLE IF NOT EXISTS players(
     id integer PRIMARY KEY,
@@ -365,6 +365,7 @@ CREATE TABLE IF NOT EXISTS tablemoneys(
 sqlmeths.executesql(DATABASE, players_sql, tablemoneys_sql)
 
 # this has to be done before every app rerun
+# in case anyone left the money on some table
 for fbid in sqlmeths.getcol(DATABASE, 'players', 'fbid'):
     fbid = fbid[0]
     leftovers = sqlmeths.getasdicts(DATABASE, 'tablemoneys', 'tblid', 'money', {'fbid': fbid})

@@ -376,8 +376,7 @@ sqlmeths.emptytable(DATABASE, 'tablemoneys')
 
 # game continuation
 if __name__ == '__main__':
-    #DEALER_MAIL = input('Dealer email: ')
-    #DEALER_PASSWORD = input('Dealer password: ')
-    DEALER_MAIL, DEALER_PASSWORD = 'amahmoh23@gamil.com', 'lagrunge'
+    DEALER_MAIL = input('Dealer email: ')
+    DEALER_PASSWORD = input('Dealer password: ')
     DEALER = Dealer(DEALER_MAIL, DEALER_PASSWORD)
     DEALER.listen()

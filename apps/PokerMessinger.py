@@ -4,7 +4,7 @@ from sys import path
 from random import choice
 from pathlib import Path
 from fbchat import Client
-path.append(str(Path().cwd().parent)) # so i can use absolute paths
+path.append(str(Path().cwd().parent))
 from fbchat.models import *
 from lib import sqlmeths, timemeths
 from lib.pokerlib import PlayerGroup, Player, PokerGame
@@ -216,25 +216,25 @@ class Dealer(Client):
                     self.sendMessage("Money Can Be Requested in " + to_wait,
                     thread_id = thread_id)
 
-    # this happens ONLY when the game is forcibly ended by removing the dealer mid-game
+    # this happens ONLY when the game is
+    # forcibly ended by removing the dealer mid-game
     def remove_game(self, table_id):
-        for player in self.games.pop(table_id).all_players:
-            player.resolve()
+        for player in self.games.pop(table_id).all_players: player.resolve()
 
     ## these functions serve non-essential purpuse of dealer interaction with single user
 
     # this makes a random threat to user_id if there are threats
     def make_threat(self, user_id):
         pth = Path('quotes')
-        if pth.is_dir():
-            user_name = self.fetchUserInfo(user_id)[user_id].name.split()[0]
-            choice_list = list(pth.iterdir())
-            if choice_list:
-                file_name = choice(choice_list)
-                with open(file_name, 'r', encoding='UTF-8') as file:
-                    send = ''.join(file.readlines())
-                return self.sendMessage(send.format(name = user_name),
-                thread_id = user_id, thread_type = ThreadType.USER)
+        if not pth.is_dir(): return
+        user_name = self.fetchUserInfo(user_id)[user_id].name.split()[0]
+        choice_list = list(pth.iterdir())
+        if not choice_list: return
+        file_name = choice(choice_list)
+        with open(file_name, 'r', encoding='UTF-8') as file:
+            send = ''.join(file.readlines())
+        return self.sendMessage(send.format(name = user_name),
+        thread_id = user_id, thread_type = ThreadType.USER)
 
 class FbPlayer(Player):
 

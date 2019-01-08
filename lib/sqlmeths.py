@@ -37,7 +37,6 @@ def update(con, table, valsdic, wheredic):
     vals = ', '.join([f'{key}=?' for key in valsdic])
     where = ' AND '.join([f'{key}=?' for key in wheredic])
     sql = f'''UPDATE {table} SET {vals} WHERE {where}'''
-    print(tuple(valsdic.values()) + tuple(wheredic.values()))
     con.cursor().execute(sql, tuple(valsdic.values()) +
                               tuple(wheredic.values()))
 

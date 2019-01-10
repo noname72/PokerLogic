@@ -12,14 +12,13 @@ def connect(file):
         yield print(err)
 
 def safesqlexe(fun):
-    def retfun(dbfile, *args, **kwargs):
+    def wrapper(con, *args, **kwargs):
         try:
-            with connect(dbfile) as con:
-                ret = fun(con, *args, **kwargs)
+            ret = fun(con, *args, **kwargs)
             return ret if ret is not None else True
         except sqlite3.Error as e:
             print(e)
-    return retfun
+    return wrapper
 
 @safesqlexe
 def executesql(con, *sqls):
@@ -31,6 +30,7 @@ def insert(con, table, **vals):
     sql = f'''INSERT INTO {table}({', '.join(strkeys)})
           VALUES({', '.join(['?'] * len(vals))})'''
     con.cursor().execute(sql, tuple(vals.values()))
+    con.commit()
 
 @safesqlexe
 def update(con, table, valsdic, wheredic):
@@ -39,15 +39,18 @@ def update(con, table, valsdic, wheredic):
     sql = f'''UPDATE {table} SET {vals} WHERE {where}'''
     con.cursor().execute(sql, tuple(valsdic.values()) +
                               tuple(wheredic.values()))
+    con.commit()
 
 @safesqlexe
 def deletefromtable(con, table, wheredic):
     where = ' AND '.join([f'{key}=?' for key in wheredic])
     sql = f'DELETE FROM {table} WHERE {where}'
     con.cursor().execute(sql, tuple(wheredic.values()))
+    con.commit()
 @safesqlexe
 def emptytable(con, table):
     con.cursor().execute(f'DELETE FROM {table}')
+    con.commit()
 
 @safesqlexe
 def getcol(con, table, colname):

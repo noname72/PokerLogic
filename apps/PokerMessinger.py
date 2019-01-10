@@ -3,6 +3,7 @@
 from sys import path
 from random import choice
 from pathlib import Path
+import sqlite3
 from fbchat import Client
 path.append(str(Path().cwd().parent))
 from fbchat.models import *
@@ -13,7 +14,7 @@ from lib.pokerlib import PlayerGroup, Player, PokerGame
 DOCUMENTATION_URL = 'https://kuco23.github.io/pokermessinger/documentation.html'
 
 DATABASE = 'playerdb.db' # player db with players and tablemoneys tables
-with sqlmeths.connect(DATABASE) as dbCon: pass
+CONNECTION = sqlite3.connect(DATABASE)
 
 TABLE_MONEY = 1000 # money that a new player gets
 BIG_BLIND = TABLE_MONEY // 50 # big_blinds at every table
@@ -167,7 +168,7 @@ class Dealer(Client):
 
         # messages sent privately to the dealer (data requests / data modification requests)
         elif kwargs['thread_type'] == ThreadType.USER and message in PRIVATE_STATEMETNS:
-            sql_data = sqlmeths.getasdict(DATABASE, 'players', 'fbid', thread_id)
+            sql_data = sqlmeths.getasdict(CONNECTION, 'players', 'fbid', thread_id)
 
             # player wants to be signed up
             if message == INITIALIZE_PLAYER:
@@ -176,7 +177,7 @@ class Dealer(Client):
                     thread_id = thread_id)
                 else:
                     user_info = self.fetchUserInfo(author_id)[author_id]
-                    sqlmeths.insert(DATABASE, 'players',
+                    sqlmeths.insert(CONNECTION, 'players',
                         name = user_info.name,
                         fbid = thread_id,
                         money = PLAYER_STARTING_MONEY,
@@ -207,7 +208,7 @@ class Dealer(Client):
                 if diff['days'] or diff['hours'] >= MONEY_WAITING_PERIOD:
                     sql_data['timestamp'] = timestamp
                     sql_data['money'] += MONEY_ADD_PER_PERIOD
-                    sqlmeths.update(DATABASE, 'players', sql_data, {'fbid': thread_id})
+                    sqlmeths.update(CONNECTION, 'players', sql_data, {'fbid': thread_id})
                     self.sendMessage(str(MONEY_ADD_PER_PERIOD) + " successfully added",
                     thread_id = thread_id)
                 else:
@@ -244,12 +245,12 @@ class FbPlayer(Player):
         self.fb_id = fb_id
         self.table_id = table_id
 
-        db_data = sqlmeths.getasdict(DATABASE, 'players', 'fbid', fb_id)
+        db_data = sqlmeths.getasdict(CONNECTION, 'players', 'fbid', fb_id)
         money = TABLE_MONEY if db_data['money'] >= TABLE_MONEY else db_data['money']
         db_data['money'] -= money
-        sqlmeths.insert(DATABASE, 'tablemoneys',
+        sqlmeths.insert(CONNECTION, 'tablemoneys',
         fbid=fb_id, tblid=table_id, money=money)
-        sqlmeths.update(DATABASE, 'players', db_data, {'fbid': fb_id})
+        sqlmeths.update(CONNECTION, 'players', db_data, {'fbid': fb_id})
 
         super().__init__(self.name, money)
         self.id = fb_id
@@ -261,14 +262,14 @@ class FbPlayer(Player):
     @money.setter
     def money(self, value):
         self.__money = value
-        sqlmeths.update(DATABASE, 'tablemoneys', {'money': value},
+        sqlmeths.update(CONNECTION, 'tablemoneys', {'money': value},
         {'fbid': self.fb_id, 'tblid': self.table_id})
 
     def refill_money(self):
         if self.money >= TABLE_MONEY:
             return False
 
-        file_data = sqlmeths.getasdict(DATABASE, 'players', 'fbid', self.fb_id)
+        file_data = sqlmeths.getasdict(CONNECTION, 'players', 'fbid', self.fb_id)
         __money = file_data['money']
         money_to_fill = TABLE_MONEY - self.money
 
@@ -283,14 +284,14 @@ class FbPlayer(Player):
 
     # called when player leaves the table (or game ends)
     def resolve(self):
-        pl_data = sqlmeths.getasdict(DATABASE, 'players', 'fbid', self.fb_id)
-        tblmoney_data = sqlmeths.getasdicts(DATABASE, 'playermoneys',
+        pl_data = sqlmeths.getasdict(CONNECTION, 'players', 'fbid', self.fb_id)
+        tblmoney_data = sqlmeths.getasdicts(CONNECTION, 'playermoneys',
         'tblid', 'money', {'fbid': self.fb_id})
         pl_data['money'] += tblmoney_data[self.table_id]
         self.money = 0
-        sqlmeths.deletefromtable(DATABASE, 'tablemoneys',
+        sqlmeths.deletefromtable(CONNECTION, 'tablemoneys',
         {'fbid': self.fb_id, 'tblid': self.table_id})
-        sqlmeths.update(DATABASE, 'players', pl_data, {'fbid': self.fb_id})
+        sqlmeths.update(CONNECTION, 'players', pl_data, {'fbid': self.fb_id})
 
 
 class FbPokerGame(PokerGame):
@@ -362,17 +363,18 @@ CREATE TABLE IF NOT EXISTS tablemoneys(
     money integer
 )
 '''
-sqlmeths.executesql(DATABASE, players_sql, tablemoneys_sql)
+sqlmeths.executesql(CONNECTION, players_sql, tablemoneys_sql)
 
 # this has to be done before every app rerun
 # in case anyone left the money on some table
-for fbid in sqlmeths.getcol(DATABASE, 'players', 'fbid'):
+for fbid in sqlmeths.getcol(CONNECTION, 'players', 'fbid'):
     fbid = fbid[0]
-    leftovers = sqlmeths.getasdicts(DATABASE, 'tablemoneys', 'tblid', 'money', {'fbid': fbid})
-    plyrdata = sqlmeths.getasdict(DATABASE, 'players', 'fbid', fbid)
+    leftovers = sqlmeths.getasdicts(CONNECTION, 'tablemoneys', 'tblid',
+    'money', {'fbid': fbid})
+    plyrdata = sqlmeths.getasdict(CONNECTION, 'players', 'fbid', fbid)
     plyrdata['money'] += sum(leftovers.values())
-    sqlmeths.update(DATABASE, 'players', plyrdata, {'fbid': fbid})
-sqlmeths.emptytable(DATABASE, 'tablemoneys')
+    sqlmeths.update(CONNECTION, 'players', plyrdata, {'fbid': fbid})
+sqlmeths.emptytable(CONNECTION, 'tablemoneys')
 
 # game continuation
 if __name__ == '__main__':

@@ -8,6 +8,7 @@ from fbchat import Client
 path.append(str(Path().cwd().parent))
 from fbchat.models import *
 from lib import sqlmeths, timemeths
+from lib.handparse import models, HandParser
 from lib.pokerlib import PlayerGroup, Player, PokerGame
 
 # this is the documentation and the link is sent to every new player

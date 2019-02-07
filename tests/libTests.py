@@ -1,6 +1,7 @@
 from pathlib import Path
 from sys import path
 path.append(str(Path().cwd().parent))
+from lib.handparse import models, HandParser
 from lib.pokerlib import PlayerGroup, Player, PokerGame
 
 PLAYERS = ['Nejc', 'Tjasa']
@@ -24,7 +25,8 @@ class TermPokerGame(PokerGame):
 
 if __name__ == '__main__':
     game = TermPokerGame(PlayerGroup([Player(player, STARTING_MONEY)
-                                      for i, player in enumerate(PLAYERS)]), BIG_BLIND)
+                                      for i, player in enumerate(PLAYERS)]),
+                         BIG_BLIND)
     game.new_round()
     while game.round:
         action = input(game.round.current_player.name + ': ')

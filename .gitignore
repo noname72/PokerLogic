@@ -1,6 +1,4 @@
 # gitignore
 __pycache__
 *.txt
-*/__pycache__
-*/*.txt
-*/*.db
+*.db

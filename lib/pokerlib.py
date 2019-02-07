@@ -1,208 +1,8 @@
 from itertools import cycle
 from copy import copy as shallowcopy
-try:
-    from numpy.random import shuffle # numpy is faster (fcourse)
-except ModuleNotFoundError as e:
-    from random import shuffle
-
-# 33.26s for Parsing a Million hands
-class HandParser:
-    __slots__ = ['original_cards', 'cards', 'values', 'suits', 'status', 'top_hand_name', 'hand_base_cards', 'kickers', 'top_cards']
-    HANDS = ['High Card', 'One Pair', 'Two Pair', 'Three of a Kind', 'Straight', 'Flush', 'Full House', 'Four of a Kind', 'Straight Flush']
-    deck = [[value_index, suit_index] for suit_index in range(4) for value_index in range(13)] # this represents how cards in deck are represented
-
-    def __init__(self, hand):
-        # AssertionError if hand is not valid
-        test_assert_hand = [str(val) + str(suit) for val, suit in hand]
-        assert len(test_assert_hand) == len(set(test_assert_hand)) <= 7 and not [card for card in hand if card not in self.deck]
-        self.original_cards = hand
-
-        # hand is always represented by [[value_index, suit_index], [value_index, suit_index], ..., [value_index, suit_index]]
-        self.cards = sorted(hand)
-        self.values, self.suits = tuple(([card[i] for card in self.cards] for i in (0, 1)))
-
-        # dict with keys of hands and values of cards representing that hand
-        self.status = self.get_hand_status()
-
-        # name of best hand (eg. Flush)
-        self.top_hand_name = [stat for stat in self.status if self.status[stat]][-1]
-
-        # best five cards in hand (all that really matters)
-        self.hand_base_cards = self.status[self.top_hand_name]
-        kicker_options = [card for card in self.cards if card not in self.hand_base_cards][::-1]
-        self.kickers = kicker_options[:5 - len(self.hand_base_cards)] if len(hand) >= 5 else kicker_options
-        self.top_cards = self.hand_base_cards + self.kickers
-
-    def __repr__(self):
-        return f'HandParser({str(self)})'
-
-    def __str__(self):
-        return str([[value, suit] for value, suit in self.cards])
-
-    def __eq__(self, other):
-        if HandParser.HANDS.index(self.top_hand_name) != HandParser.HANDS.index(other.top_hand_name):
-            return False
-        for s_card, o_card in zip(self.top_cards, other.top_cards):
-            if s_card[0] != o_card[0]:
-                return False
-        return True
-
-    def __gt__(self, other):
-        if HandParser.HANDS.index(self.top_hand_name) > HandParser.HANDS.index(other.top_hand_name):
-            return True
-        elif HandParser.HANDS.index(self.top_hand_name) < HandParser.HANDS.index(other.top_hand_name):
-            return False
-        else:
-            for s_card, o_card in zip(self.top_cards, other.top_cards):
-                if s_card[0] == o_card[0]:
-                    continue
-                return s_card[0] > o_card[0]
-        return False
-
-    def __lt__(self, other):
-        if HandParser.HANDS.index(self.top_hand_name) < HandParser.HANDS.index(other.top_hand_name):
-            return True
-        elif HandParser.HANDS.index(self.top_hand_name) > HandParser.HANDS.index(other.top_hand_name):
-            return False
-        else:
-            for s_card, o_card in zip(self.top_cards, other.top_cards):
-                if s_card[0] == o_card[0]:
-                    continue
-                return s_card[0] < o_card[0]
-        return False
-
-    def add(self, cards): # THIS METHOD SHOULD BE OPTIMIZED
-        self.__init__(self.cards + cards)
-
-    def status_repr(self):
-        return '\n'.join([f'{stat} --> {self.status[stat]}' for stat in self.status])
-
-    def get_hand_status(self):
-        status = {_hand: [] for _hand in HandParser.HANDS}
-
-        # Check for pairs
-        from_count_to_hand = {2 : 'One Pair', 3 : 'Three of a Kind', 4 : 'Four of a Kind'}
-        # count repetitions, number of one pairs and number of three of a kinds
-        counters = [1,0,0]
-        # just leave this part alone, you think you know what you are doing but leave it, i'm pretty sure it works now
-        for i in range(1, len(self.cards))[::-1]: # it's reversed so it can skip low vlue pairs if there are too many
-            if self.cards[i - 1][0] == self.cards[i][0]:
-                counters[0] += 1
-            if self.cards[i - 1][0] != self.cards[i][0] or i == 1:
-                i = 0 if i == 1 and self.cards[i - 1][0] == self.cards[i][0] else i # if i = 1 this if block executes in the same loop as the previous one
-                if not (counters[0] == 2 and counters[1] >= 1 or counters[0] == 3 and counters[2] >= 1 or counters[0] == 1):
-                    status[from_count_to_hand[counters[0]]] = self.cards[i: i + counters[0]]
-                elif counters[0] == 2 and counters[1] == 1:
-                    status['Two Pair'] = status['One Pair'] + self.cards[i: i + counters[0]]
-                    status['One Pair'] = []
-                elif counters[0] == 3 and counters[2] == 1:
-                    status['Full House'] = status['Three of a Kind'] + self.cards[i: i + counters[0] - 1]
-
-                counters[2] += 1 if counters[0] == 3 else 0
-                counters[1] += 1 if counters[0] == 2 else 0
-                counters[0] = 1
-
-        if status['One Pair'] and status['Three of a Kind']:
-            status['Full House'] = status['Three of a Kind'] + status['One Pair']
-        if status['Two Pair'] and status['Three of a Kind']:
-            status['Full House'] = status['Three of a Kind'] + status['Two Pair'][:2]
-
-        # Check for Straight
-        whole_straight = [[], []]
-        aces_front, aces_back = [ace for ace in self.cards if ace[0] == 12] + [not_ace for not_ace in self.cards if not_ace[0] != 12], self.cards
-        # check if straight was made by aces being the last or the first card
-        for j, hand in zip([0, 1], [aces_back, aces_front]):
-            straight_count, duplicates = 1, 0
-            for i in range(len(hand) - 1)[::-1]:
-                if hand[i][0] + 1 == hand[i + 1][0]:
-                    straight_count += 1
-                    whole_straight[j] = hand[i: i + straight_count + duplicates] if straight_count >= 5 else whole_straight[j]
-                elif hand[i][0] == hand[i + 1][0]:
-                    duplicates += 1
-                    whole_straight[j] = hand[i: i + straight_count + duplicates] if straight_count >= 5 else whole_straight[j]
-                elif hand[i][0] != hand[i + 1][0]:
-                    straight_count = 1
-                    duplicates = 0
-            if aces_back == aces_front:
-                break
-
-        whole_straight = whole_straight[0] if len(whole_straight[0]) >= len(whole_straight[1]) else whole_straight[1]
-        # remove duplicates in the middle of straight eg. 5,6,6,7,8,9
-        status['Straight'] = [whole_straight[i] for i in range(len(whole_straight)) if whole_straight[i][0] not in self.get_values(whole_straight[:i])][-5:][::-1]
-
-        # Check for Flush
-        for suit in range(4):
-            if self.suits.count(suit) >= 5:
-                status['Flush'] = self.get_same_suits(self.cards, suit)[-5:][::-1]
-                break
-
-        # Check for Straight Flush
-        if status['Straight'] and status['Flush']:
-            candidates =  self.get_same_suits(whole_straight, suit)
-            # we know all are the same suit so they are all different numbers
-            for pos in [[value for value, _ in candidates], [value for value, _ in candidates if value == 12] + [value for value, _ in candidates if value != 12]]:
-                count = 1
-                for i in range(len(pos) - 1)[::-1]:
-                    count = count + 1 if pos[i] + 1 == pos[i + 1] else 1
-                    if count == 5:
-                        status['Straight Flush'] = candidates[::-1][i: i + 5][::-1]
-                        break
-                if status['Straight Flush']:
-                    break
-
-        # Set high card if there is none higher hands matched
-        if not [status[stat_name] for stat_name in status if status[stat_name]]:
-            status['High Card'] = [self.cards[-1]]
-
-        return status
-
-    @staticmethod
-    def get_values(split_cards):
-        return [value for value, _ in split_cards]
-    @staticmethod
-    def get_same_suits(split_cards, match):
-        return [[value, suit] for value, suit in split_cards if suit == match]
-
-    @staticmethod
-    def get_kicker(hands: list):
-        kicker = []
-
-        winner = max(hands)
-        losers = [hand for hand in hands if hand < winner]
-        if not losers: # everyone won or winner the only one in hands
-            return None
-        max_loser = max(losers)
-
-        # if winner won by a hand level there is no kicker
-        if HandParser.HANDS.index(winner.top_hand_name) > HandParser.HANDS.index(max_loser.top_hand_name):
-            return None
-        else:
-            winner_best_vals = [card[0] for card in winner.hand_base_cards]
-            loser_best_vals = [card[0] for card in max_loser.hand_base_cards]
-
-            # here the best hand is represented by not 5 card + kickers != 0
-            if winner.top_hand_name in ['High Card', 'One Pair', 'Two Pair', 'Three of a Kind', 'Full House', 'Four of a Kind']:
-                if set(winner_best_vals) != set(loser_best_vals):
-                    return None
-                else:
-                    searchForKicker = zip(winner.kickers, max_loser.kickers)
-
-            elif winner.top_hand_name == 'Flush':
-                if winner_best_vals[0] != loser_best_vals[0]: # it can be equal or >
-                    return None
-                searchForKicker = zip(winner.hand_base_cards[1:], max_loser.hand_base_cards[1:])
-
-            # hand in ['Straight', 'Straight Flush']
-            else:
-                return None
-
-            for w_card, l_card in searchForKicker:
-                if w_card[0] == l_card[0]:
-                    kicker.append(w_card[0])
-                elif w_card[0] > l_card[0]:
-                    kicker.append(w_card[0])
-                    return kicker
-
+try: from numpy.random import shuffle # numpy is faster (fcourse)
+except ModuleNotFoundError as e: from random import shuffle
+from lib.handparse import models, HandParser
 
 # this was just needed constantly within PokerGame
 TABLE_DICT = {0: 0, 3: 1, 4: 2, 5: 3}
@@ -214,9 +14,8 @@ TABLE_DICT = {0: 0, 3: 1, 4: 2, 5: 3}
 class PlayerGroup(list):
 
     def __init__(self, players: list):
-        # all ids must differ
-        assert not any([players[i - 1].id == players[i].id for i in range(1, len(players))])
-        # every player in list has to be an object derived from Player class (or its baseclass)
+        # every player in list has to be an object
+        # derived from Player class (or its baseclass)
         assert all([isinstance(player, Player) for player in self])
         super().__init__(players)
 
@@ -268,9 +67,11 @@ class PlayerGroup(list):
 
     def winners(self):
         winner = max(self)
-        return type(self)([player for player in self if player.hand == winner.hand])
+        return type(self)([player for player in self
+                           if player.hand == winner.hand])
 
-# Game is made so that it is controled from input function, where the Game logic from this object must be combined
+# Game is made so that it is controled from input function,
+# where the Game logic from this object must be combined
 # in private out if list or tuple is passed it means it contains cards
 class Player:
 
@@ -316,11 +117,14 @@ class Player:
         return not self.is_folded and not self.is_all_in
 
 
-# everything in here returns cards represented as [value_index, suit_index] to public/private outs
-# players without money are removed at round.close() and should not be included in any game
+# everything in here returns cards represented as
+# [value_index, suit_index] to public/private outs
+# players without money are removed at round.close() and
+# should not be included in any game
 # if player's money within a round is 0 he should be all in
 class PokerGame:
-    # these define how a classmethod public_out will respond with given arguments (important when public_out is overriden)
+    # these define how a classmethod public_out will respond
+    # with given arguments (important when public_out is overriden)
     # these methods must be overriden to have IO support for the game
     IO_actions = {
     'Dealt Cards': lambda cards: None,
@@ -348,7 +152,8 @@ class PokerGame:
         self.rounds_played = 0
 
         # changes during game, resets every round
-        self.button = players[0] if players else None # player that posts big blind (starts with the first one)
+        # player that posts big blind (starts with the first one)
+        self.button = players[0] if players else None
 
     @property
     def all_players(self):
@@ -380,7 +185,8 @@ class PokerGame:
         return 2 <= len(self.players) <= 9
 
     def new_round(self):
-        # round should be None and game should be OK to start another round (external processes should cover this)
+        # round should be None and game should be OK to start
+        # another round (external processes should cover this)
         assert self.round is None and self.is_ok()
 
         self.rounds_played += 1
@@ -402,7 +208,8 @@ class PokerGame:
         def __init__(this, players, button, game_ref):
             # reference from this to self. Has to stay, because of public out
             this.self = game_ref
-            # a sign that can be toggled from an outside source signaling that round will end after the current round is finished
+            # a sign that can be toggled from an outside source signaling
+            # that round will end after the current round is finished
             this.exit_after_this = False
 
             this.players = players
@@ -423,19 +230,26 @@ class PokerGame:
                 assert player.money > 0
                 player.cards = tuple(next(this.deck) for _ in range(2))
                 player.hand = HandParser(list(player.cards))
-                this.self.private_out(player, cards = player.cards, _id = 'Dealt Cards')
+                this.self.private_out(player,
+                                      cards = player.cards,
+                                      _id = 'Dealt Cards')
 
             previous_player = this.players.previous_active_player_from(this.button)
             this.player_added_to_pot(previous_player, this.self.big_blind // 2)
-            this.self.public_out(player_id = previous_player.id, player_name = previous_player.name,
-            given = previous_player.money_given[0], _id = 'Small Blind')
+            this.self.public_out(player_id = previous_player.id,
+                                 player_name = previous_player.name,
+                                 given = previous_player.money_given[0],
+                                 _id = 'Small Blind')
             this.player_added_to_pot(this.button, this.self.big_blind)
-            this.self.public_out(player_id = this.button.id, player_name = this.button.name,
-            given = this.button.money_given[0], _id = 'Big Blind')
+            this.self.public_out(player_id = this.button.id,
+                                 player_name = this.button.name,
+                                 given = this.button.money_given[0],
+                                 _id = 'Big Blind')
 
             this.process_after_input()
 
-        # deletes itself from game attributes, resets everything and returns whether the game should be continued
+        # deletes itself from game attributes, resets everything and
+        # returns whether the game should be continued
         def close(this):
             for player in this.players:
                 player.money_given = [0, 0, 0, 0]
@@ -446,10 +260,13 @@ class PokerGame:
                 player.hand = None
                 if player.money == 0:
                     this.self.players.remove(player)
-                    this.self.public_out(player_name = player.name, player_id = player.id, _id = 'Player Lost Money')
+                    this.self.public_out(player_name = player.name,
+                                         player_id = player.id,
+                                         _id = 'Player Lost Money')
 
             # if game wasnt scheduled to end after this round from an
-            # external source and game is ok to continue, then trigger a new round
+            # external source and game is ok to continue,
+            # then trigger a new round
             this.self.round = None
             if not this.exit_after_this and this.self.is_ok():
                 this.self.new_round()
@@ -469,7 +286,8 @@ class PokerGame:
             return [sum(player.money_given[i] for player in this.players) for i in range(4)]
 
         # this is used to see whether round can continue to another turn
-        # checks if all active players have given equal amount of money, and those that have gone all in have less money in that those who are active
+        # checks if all active players have given equal amount of money,
+        # and those that have gone all in have less money in that those who are active
         def pot_is_equal(this):
             # so max returns 0 or max money_given
             all_ins_money = [player.money_given[TABLE_DICT[len(this.table)]] for player in this.players if player.is_all_in and not player.is_folded] or [0]
@@ -503,16 +321,20 @@ class PokerGame:
             money_to_call = this.get_money_to_call()
             money_left_to_call = money_to_call - this.current_player.money_given[turn_index]
 
-            # process RAISE (input has to be "raise X", where X is a non negative integer, by which player raises the money_to_call)
-            if action.startswith('raise ') and len(action.split()) == 2 and action.split()[1].isdigit() and float(action.split()[1]).is_integer():
+            # process RAISE (input has to be "raise X", where X is a non
+            # negative integer, by which player raises the money_to_call)
+            if action.startswith('raise ') and len(action.split()) == 2 and \
+               action.split()[1].isdigit() and float(action.split()[1]).is_integer():
                 raised_by = int(float(action.split()[1]))
 
                 if raised_by + money_to_call < this.current_player.money:
-                    if raised_by < this.self.big_blind: # if player didnt go all-in he should raise more than the BIG_BLIND
+                    # if player didnt go all-in he should raise more than the BIG_BLIND
+                    if raised_by < this.self.big_blind: 
                         this.self.public_out(_id = 'Raise Amount Error')
                         return False
                     this.self.public_out(player_id = this.current_player.id,
-                    player_name = this.current_player.name, raised = raised_by, _id = 'Player Raised')
+                                         player_name = this.current_player.name,
+                                         raised = raised_by, _id = 'Player Raised')
 
                 this.player_added_to_pot(this.current_player, money_left_to_call + raised_by)
                 this.current_player.played_turn = True
@@ -529,7 +351,9 @@ class PokerGame:
             elif action == 'call':
                 call_value = money_left_to_call if money_left_to_call < this.current_player.money else this.current_player.money
                 this.self.public_out(player_id = this.current_player.id,
-                player_name = this.current_player.name, called = call_value , _id = 'Player Called')
+                                     player_name = this.current_player.name,
+                                     called = call_value ,
+                                     _id = 'Player Called')
                 this.player_added_to_pot(this.current_player, money_left_to_call)
                 this.current_player.played_turn = True
                 this.process_after_input()
@@ -538,7 +362,8 @@ class PokerGame:
             # process check if there is no money to call (same as call only for instances when you call 0)
             elif action == 'check' and money_left_to_call == 0:
                 this.self.public_out(player_id = this.current_player.id,
-                player_name = this.current_player.name, _id = 'Player Checked')
+                                     player_name = this.current_player.name,
+                                     _id = 'Player Checked')
                 this.current_player.played_turn = True
                 this.process_after_input()
                 return True
@@ -555,7 +380,8 @@ class PokerGame:
             # if none of the previous returns initializes input is invalid
             return False
 
-        # resets played_turn and money_in_pot for every player. Initializes new turn based how many cards were on the table
+        # resets played_turn and money_in_pot for every player.
+        # Initializes new turn based how many cards were on the table
         def turn_generator(this):
             turn_dict = {3: 'FLOP', 4: 'TURN', 5: "RIVER"}
 
@@ -564,10 +390,12 @@ class PokerGame:
                 new_cards = [next(this.deck) for _ in range(i)]
                 for player in this.players:
                     player.played_turn = False
-                    player.hand.add(new_cards)
+                    player.hand.addCards(new_cards)
 
                 this.table.extend(new_cards)
-                this.self.public_out(turn_name = turn_dict[len(this.table)], table = this.table, _id = 'New Turn')
+                this.self.public_out(turn_name = turn_dict[len(this.table)],
+                                     table = this.table,
+                                     _id = 'New Turn')
                 yield True
 
         # This continues the game and is called with player input
@@ -598,7 +426,8 @@ class PokerGame:
             this.current_player = this.players.next_active_player_from(this.current_player)
             to_call = this.get_money_to_call() - this.current_player.money_given[TABLE_DICT[len(this.table)]]
             this.self.public_out(player_name = this.current_player.name,
-            player_id = this.current_player.id, to_call = to_call, _id = 'To Call')
+                                 player_id = this.current_player.id,
+                                 to_call = to_call, _id = 'To Call')
 
         def deal_winnings(this):
             # if all players leave (safety)
@@ -610,7 +439,8 @@ class PokerGame:
                 winner = this.players.get_not_folded_players()[0]
                 winner.money += sum(this.get_pot_size())
                 this.self.public_out(winner_id = winner.id, winner_name = winner.name,
-                won = sum(this.get_pot_size()), _id = 'Declare Unfinished Winner')
+                                     won = sum(this.get_pot_size()),
+                                     _id = 'Declare Unfinished Winner')
                 return None
 
             for player in this.players:
@@ -629,19 +459,24 @@ class PokerGame:
 
             # show players' hands
             for competitor in sorted_by_subgames:
-                this.self.public_out(player_id = competitor.id, player_name = competitor.name,
-                player_cards = competitor.cards, _id = 'Public Show Cards')
+                this.self.public_out(player_id = competitor.id,
+                                     player_name = competitor.name,
+                                     player_cards = competitor.cards,
+                                     _id = 'Public Show Cards')
 
             for i in grouped_indexes:
-                subgame_competitors = sorted_by_subgames[i:] # this are the people competing for the part of the pot they bought
+                # these are the people competing for the part of the pot they bought
+                subgame_competitors = sorted_by_subgames[i:] 
                 winning_players = subgame_competitors.winners()
 
                 # this is static for the loops bellow
-                # (winning players need to split the static money, while taking it out at the same time so the same money doesnt get won multiple times)
+                # (winning players need to split the static money, while taking it
+                # out at the same time so the same money doesnt get won multiple times)
                 PLAYER_STAKES = [player.stake for player in this.players]
                 SUBGAME_STAKE = subgame_competitors[0].stake
 
-                for winning_split in winning_players: # give winnings to players that split the subpot
+                # give winnings to players that split the subpot
+                for winning_split in winning_players:
                     player_winnings = 0
                     for player, PLAYER_STAKE in zip(this.players, PLAYER_STAKES):
 
@@ -660,11 +495,14 @@ class PokerGame:
                         winning_split.money += round(player_winnings)
                         # this block is for public_out
                         # subgame participants are players that you winning_split had to beat to get player_winnings
-                        kicker = HandParser.get_kicker([player.hand for player in subgame_competitors])
+                        kickers = HandParser.get_kickers([player.hand for player in subgame_competitors])
                         this.self.public_out(winner_id = winning_split.id,
-                        winner_name = winning_split.name, won = round(player_winnings),
-                        hand_name = winning_split.hand.top_hand_name, hand_base = winning_split.hand.hand_base_cards,
-                        kicker = kicker, _id = 'Declare Finished Winner')
+                                             winner_name = winning_split.name,
+                                             won = round(player_winnings),
+                                             hand_name = models.handdict[winning_split.hand.handindex],
+                                             hand_base = list(winning_split.hand.idx2cards()),
+                                             kicker = kickers,
+                                             _id = 'Declare Finished Winner')
 
 
     ### the methods from here are meant to be overriden when baseclassing this class and implementing game IO
@@ -680,7 +518,8 @@ class PokerGame:
         ...
         pass
 
-    # this is meant to be a helper function to outs, when hand name is constructed (game sends only hand_name and cards from which hand consists to public_out)
+    # this is meant to be a helper function to outs, when hand name is constructed
+    # (game sends only hand_name and cards from which hand consists to public_out)
     @staticmethod
     def hand_repr(best_hand_name, best_hand_base, vals_repr=range(13), suits_repr=range(4)):
         status_vals = [vals_repr[best_hand_base[i][0]] for i in range(len(best_hand_base))]

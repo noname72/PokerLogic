@@ -391,6 +391,8 @@ class PokerGame:
                 for player in this.players:
                     player.played_turn = False
                     player.hand.addCards(new_cards)
+                    player.hand.analyse()
+                    player.hand.getKickers()
 
                 this.table.extend(new_cards)
                 this.self.public_out(turn_name = turn_dict[len(this.table)],

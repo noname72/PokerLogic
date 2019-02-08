@@ -26,9 +26,6 @@ class HandParser:
         self.handindex = None
         self.__handbase = []
 
-        self.analyse()
-        self.getKickers()
-
     @property
     def handbase(self):
         return self.__handbase

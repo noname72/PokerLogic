@@ -21,7 +21,7 @@ The exact rules are included in the [documentation](https://kuco23.github.io/pok
 This is a simple use of the library where poker is played on the terminal,
 with raw data being sent to the terminal about the game.
 ```python
-from lib.pokerlib import PlayerGroup, Player, PokerGame
+from pokerlib.game import PlayerGroup, Player, PokerGame
 
 BIG_BLIND = 20
 PLAYER_MONEY = 50 * BIG_BLIND

@@ -1,11 +1,15 @@
-class models:
-    nvals = 13
-    nsuits = 4
-    handdict = ["HighCard", "OnePair", "TwoPair",
-    "ThreeOfAKind", "Straight", "Flush",
-    "FullHouse", "FourOfAKind", "StraightFlush"]
-    nhands = len(handdict)
-    for i, hand in enumerate(handdict): locals()[hand] = i
+from enum import Enum
+
+class Hand(Enum):
+    HIGHCARD = 0
+    ONEPAIR = 1
+    TWOPAIR = 2
+    THREEOFAKIND = 3
+    STRAIGHT = 4
+    FLUSH = 5
+    FULLHOUSE = 6
+    FOUROFAKIND = 7
+    STRAIGHTFLUSH = 8
 
 class HandParser:
     __slots__ = ["original", "ncards", "cards", "valnums",
@@ -16,15 +20,15 @@ class HandParser:
         self.ncards = len(cards)
         self.cards = sorted(cards, key = lambda x: x[0])
 
-        self.valnums = [0] * models.nvals
-        self.suitnums = [0] * models.nsuits
+        self.valnums = [0] * 13
+        self.suitnums = [0] * 4
         for value, suit in cards:
             self.valnums[value] += 1
             self.suitnums[suit] += 1
 
         self.kickers = []
         self.handindex = None
-        self.__handbase = []
+        self.handbase = []
 
     @property
     def handbase(self):
@@ -40,7 +44,7 @@ class HandParser:
         elif full is False: return map(
             lambda i: self.cards[i],
             self.handbase)
-        elif full is 'k': return map(
+        elif full == 'k': return map(
             lambda i: self.cards[i],
             self.kickers)
 
@@ -79,44 +83,37 @@ class HandParser:
     @staticmethod
     def checkStraight(valnums):
         straightcounter = 1
-        for i in range(len(valnums)-1, -1, -1):
+        for i in reversed(range(0, len(valnums))):
             if valnums[i-1] and valnums[i]:
                 straightcounter += 1
                 if straightcounter == 5: break
             else: straightcounter = 1
-        return straightcounter, i
+        return straightcounter, i - 1
 
     @staticmethod
     def getStraightFrom(cards, straightstart):
-        instraight = [False] * models.nvals
-        for i in range(straightstart - 1, straightstart + 4):
-            instraight[i] = True
-        return_cards = []
-        for i, (value, _) in enumerate(cards):
-            if instraight[value]:
-                return_cards.append(i)
-                instraight[value] = False
-        return return_cards
+        i, idxs = 0, []
+        while len(idxs) < 5:
+            if cards[i][0] == straightstart + len(idxs):
+                idxs.append(i)
+            i += 1
+        return idxs
 
     def analyse(self):
-        # order in which hands will be iterated
-        handrange = range(self.ncards-1, -1, -1)
-
-        # number of zero, one, two pair,
-        # three and four of a kinds
+        # card iteration order
+        handrange = reversed(range(0, self.ncards))
+        # number of zero, one, two pair, three and four of a kinds
         npairs = [0] * 5
         for num in self.valnums: npairs[num] += 1
-
         # check flush
-        flushsuit = [i for i in range(models.nsuits) if self.suitnums[i] >= 5]
+        flushsuit = [i for i in range(4) if self.suitnums[i] >= 5]
         # check straight
-        straightcount, straightstart = \
-            self.checkStraight(self.valnums)
+        straightcount, straightstart = self.checkStraight(self.valnums)
 
         # straight flush
         if straightcount == 5 and flushsuit:
             cards = []
-            suitedVals = [0] * models.nvals
+            suitedVals = [0] * 13
             for val, suit in self.cards:
                 if suit == flushsuit[0]:
                     suitedVals[val] += 1
@@ -124,20 +121,20 @@ class HandParser:
             # can revalue straightcount, flush > straight
             straightcount, i = self.checkStraight(suitedVals)
             if straightcount == 5:
-                self.handindex = models.StraightFlush
+                self.handindex = Hand.STRAIGHTFLUSH
                 self.handbase = self.getStraightFrom(cards, i)
                 return
 
         # four of a kind
         if npairs[4]:
-            vals = [i for i in range(models.nvals) if self.valnums[i] == 4]
+            vals = [i for i in range(13) if self.valnums[i] == 4]
             cards = [i for i in handrange if self.cards[i][0] == vals[0]]
-            self.handindex = models.FourOfAKind
+            self.handindex = Hand.FOUROFAKIND
             self.handbase = cards
 
         # full house
         elif npairs[3] == 2 or npairs[3] == 1 and npairs[2] >= 1:
-            inhouse = [False] * models.nvals
+            inhouse = [False] * 13
             threes, twos = [], []
             for val, num in enumerate(self.valnums):
                 if num == 3: threes.append(val)
@@ -147,33 +144,33 @@ class HandParser:
             while len(cards) < 5:
                 if self.cards[i][0] in maxvals: cards.append(i)
                 i -= 1
-            self.handindex = models.FullHouse
+            self.handindex = Hand.FULLHOUSE
             self.handbase = cards
 
         # flush
         elif flushsuit:
             fcolor = flushsuit[0]
             cards = [i for i in handrange if self.cards[i][1] == fcolor]
-            self.handindex = models.Flush
+            self.handindex = Hand.FLUSH
             self.handbase = cards[:5]
 
         # straight
         elif straightcount == 5:
-            self.handindex = models.Straight
+            self.handindex = Hand.STRAIGHT
             self.handbase = self.getStraightFrom(self.cards, straightstart)
 
         # three of a kind
         elif npairs[3] == 1:
-            vals = [i for i in range(models.nvals) if self.valnums[i] == 3]
+            vals = [i for i in range(13) if self.valnums[i] == 3]
             cards = [i for i in handrange if self.cards[i][0] == vals[0]]
-            self.handindex = models.ThreeOfAKind
+            self.handindex = Hand.THREEOFAKIND
             self.handbase = cards
 
         # two / one pair
         elif npairs[2]:
-            hand = models.OnePair if npairs[2] == 1 else models.TwoPair
-            lim = 2 if hand == models.OnePair else 4
-            vals = [i for i in range(models.nvals) if self.valnums[i] == 2]
+            hand = Hand.ONEPAIR if npairs[2] == 1 else Hand.TWOPAIR
+            lim = 2 if hand == Hand.ONEPAIR else 4
+            vals = [i for i in range(13) if self.valnums[i] == 2]
             cards, i = [], self.ncards - 1
             while len(cards) < lim:
                 if self.cards[i][0] in vals: cards.append(i)
@@ -183,14 +180,14 @@ class HandParser:
 
         # high card
         else:
-            self.handindex = models.HighCard
+            self.handindex = Hand.HIGHCARD
             self.handbase = [self.ncards - 1]
 
     def getKickers(self):
         self.kickers = []
         inhand = [False] * self.ncards
         for i in self.handbase: inhand[i] = True
-        for i, _ in zip(range(len(self.cards)-1,-1,-1),
+        for i, _ in zip(reversed(range(0, len(self.cards))),
                         range(5 - len(self.handbase))):
             if not inhand[i]: self.kickers.append(i)
 
@@ -209,13 +206,13 @@ class HandParser:
         loser_kicker_vals = [val for val, _ in max_loser.idx2cards('k')]
 
         # the hands represented by five hands do not have kickers
-        if winner.handindex not in [models.Straight, models.Flush,
-                                    models.FullHouse, models.StraightFlush]:
+        if winner.handindex not in [Hand.STRAIGHT, Hand.FLUSH,
+                                    Hand.FULLHOUSE, Hand.STRAIGHTFLUSH]:
             # if the hand bases differ kickers do not apply
             if set(winner_best_vals) != set(loser_best_vals): return
             else: searchForKicker = zip(winner_kicker_vals, loser_kicker_vals)
-            
-        elif winner.handindex == Flush:
+
+        elif winner.handindex == Hand.FLUSH:
             # it can be equal or >
             if winner_best_vals[0] != loser_best_vals[0]: return
             searchForKicker = zip(winner_best_vals[1:], loser_best_vals[1:])

@@ -4,12 +4,12 @@ from sys import path
 from random import choice
 from pathlib import Path
 import sqlite3
-from fbchat import Client
-path.append(str(Path().cwd().parent))
+from fbchat import 
 from fbchat.models import *
-from lib import sqlmeths, timemeths
-from lib.handparse import models, HandParser
-from lib.pokerlib import PlayerGroup, Player, PokerGame
+path.append(str(Path().cwd().parent.parent))
+from pokerlib import sqlmeths, timemeths
+from pokerlib.handparse import models, HandParser
+from pokerlib.game import PlayerGroup, Player, PokerGame
 
 # this is the documentation and the link is sent to every new player
 DOCUMENTATION_URL = 'https://kuco23.github.io/pokermessinger/documentation.html'
@@ -126,12 +126,11 @@ class Dealer(Client):
                     except AssertionError:
                         self.sendMessage('You have not signed up yet',
                         thread_id = thread_id, thread_type = ThreadType.GROUP)
-                        return None
+                        return
 
             # from now on everything requires for a game to be played and that a player in that game wrote the message
             player = game.all_players['fb_id', author_id] if game else None
-            if not player:
-                return None
+            if not player: return
 
             if message == TOGGLE_LAST_ROUND:
                 if game.round:
@@ -156,7 +155,8 @@ class Dealer(Client):
                         str(money_filled) + ' to ' + str(player.money),
                         thread_id = thread_id, thread_type = ThreadType.GROUP)
 
-            # player requested to see the money in a specific game he is playing (THIS SHOULD BE GONE when a better solution arises)
+            # player requested to see the money in a specific game he is playing
+            # (THIS SHOULD BE GONE when a better solution arises)
             elif message == SHOW_USER_TABLE_MONEY:
                 self.sendMessage('You Have ' + str(player.money),
                 thread_id = thread_id, thread_type = ThreadType.GROUP)

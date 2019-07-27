@@ -2,7 +2,8 @@ from itertools import cycle
 from copy import copy as shallowcopy
 try: from numpy.random import shuffle # numpy is faster (fcourse)
 except ModuleNotFoundError as e: from random import shuffle
-from lib.handparse import models, HandParser
+from pokerlib.enums import Value, Suit
+from pokerlib.handparse import HandParser
 
 # this was just needed constantly within PokerGame
 TABLE_DICT = {0: 0, 3: 1, 4: 2, 5: 3}
@@ -99,19 +100,15 @@ class Player:
     def __str__(self):
         return self.id
 
-    # two players shouldnt share the same name
+    # two players shouldnt share the same id
     def __eq__(self, other):
         return self.id == other.id
 
     def __lt__(self, other):
-        if self.hand and other.hand:
-            return self.hand < other.hand
-        print('error')
+        return self.hand < other.hand
 
     def __gt__(self, other):
-        if self.hand and other.hand:
-            return self.hand > other.hand
-        print('error')
+        return self.hand > other.hand
 
     def is_active(self):
         return not self.is_folded and not self.is_all_in
@@ -147,7 +144,6 @@ class PokerGame:
     def __init__(self, players: PlayerGroup, big_blind: int):
         self.big_blind = big_blind
         self.players = players # players playing the current round
-
         self.round = None
         self.rounds_played = 0
 
@@ -193,17 +189,15 @@ class PokerGame:
         self.public_out(round_index = self.rounds_played, _id = 'New Round')
         # set the next player that will be the button
         self.button = self.players[(self.players.index(self.button) + 1) % len(self.players)]
-
         self.round = self.Round(type(self.players)(self.players), self.button, self)
 
         # this happens if during the self.round attribute setting the game closes,
         # so this.round sets itself to None, but because this
         # is during its attribute setting it is still defined as round
-        if not self.is_ok():
-            self.round = None
+        if not self.is_ok(): self.round = None
 
     class Round:
-        __deck = [[value, suit] for suit in range(4) for value in range(13)]
+        __deck = [[value, suit] for suit in Suit for value in Value]
 
         def __init__(this, players, button, game_ref):
             # reference from this to self. Has to stay, because of public out
@@ -230,21 +224,27 @@ class PokerGame:
                 assert player.money > 0
                 player.cards = tuple(next(this.deck) for _ in range(2))
                 player.hand = HandParser(list(player.cards))
-                this.self.private_out(player,
-                                      cards = player.cards,
-                                      _id = 'Dealt Cards')
+                this.self.private_out(
+                    player,
+                    cards = player.cards,
+                    _id = 'Dealt Cards'
+                )
 
             previous_player = this.players.previous_active_player_from(this.button)
             this.player_added_to_pot(previous_player, this.self.big_blind // 2)
-            this.self.public_out(player_id = previous_player.id,
-                                 player_name = previous_player.name,
-                                 given = previous_player.money_given[0],
-                                 _id = 'Small Blind')
+            this.self.public_out(
+                player_id = previous_player.id,
+                player_name = previous_player.name,
+                given = previous_player.money_given[0],
+                _id = 'Small Blind'
+            )
             this.player_added_to_pot(this.button, this.self.big_blind)
-            this.self.public_out(player_id = this.button.id,
-                                 player_name = this.button.name,
-                                 given = this.button.money_given[0],
-                                 _id = 'Big Blind')
+            this.self.public_out(
+                player_id = this.button.id,
+                player_name = this.button.name,
+                given = this.button.money_given[0],
+                _id = 'Big Blind'
+            )
 
             this.process_after_input()
 
@@ -260,9 +260,11 @@ class PokerGame:
                 player.hand = None
                 if player.money == 0:
                     this.self.players.remove(player)
-                    this.self.public_out(player_name = player.name,
-                                         player_id = player.id,
-                                         _id = 'Player Lost Money')
+                    this.self.public_out(
+                        player_name = player.name,
+                        player_id = player.id,
+                        _id = 'Player Lost Money'
+                    )
 
             # if game wasnt scheduled to end after this round from an
             # external source and game is ok to continue,
@@ -281,7 +283,8 @@ class PokerGame:
         def get_money_to_call(this):
             return max(player.money_given[TABLE_DICT[len(this.table)]] for player in this.players)
 
-        # returns [a,b,c,d] for pot invested on every turn during round (for pre-flop, flop, turn, river)
+        # returns [a,b,c,d] for pot invested on every turn during round
+        # (for pre-flop, flop, turn, river)
         def get_pot_size(this):
             return [sum(player.money_given[i] for player in this.players) for i in range(4)]
 
@@ -290,9 +293,11 @@ class PokerGame:
         # and those that have gone all in have less money in that those who are active
         def pot_is_equal(this):
             # so max returns 0 or max money_given
-            all_ins_money = [player.money_given[TABLE_DICT[len(this.table)]] for player in this.players if player.is_all_in and not player.is_folded] or [0]
+            all_ins_money = [player.money_given[TABLE_DICT[len(this.table)]] \
+            for player in this.players if player.is_all_in and not player.is_folded] or [0]
             # so the second boolean expression works
-            active_money = [player.money_given[TABLE_DICT[len(this.table)]] for player in this.players if player.is_active()] or [float('Inf')]
+            active_money = [player.money_given[TABLE_DICT[len(this.table)]] \
+            for player in this.players if player.is_active()] or [float('Inf')]
             return len(set(active_money)) == 1 and active_money[0] >= max(all_ins_money)
 
         # this is called whenever player puts money in the pot and processes whether he went all-in
@@ -305,7 +310,12 @@ class PokerGame:
 
             # if player raises more than he has it is considered as going all in
             else:
-                this.self.public_out(player_id = player.id, player_name = player.name, player_money = player.money, _id = 'Player Went All-In')
+                this.self.public_out(
+                    player_id = player.id,
+                    player_name = player.name,
+                    player_money = player.money,
+                    _id = 'Player Went All-In'
+                )
                 player.money_given[turn_index] += player.money
                 player.money = 0
                 player.is_all_in = True
@@ -329,12 +339,15 @@ class PokerGame:
 
                 if raised_by + money_to_call < this.current_player.money:
                     # if player didnt go all-in he should raise more than the BIG_BLIND
-                    if raised_by < this.self.big_blind: 
+                    if raised_by < this.self.big_blind:
                         this.self.public_out(_id = 'Raise Amount Error')
                         return False
-                    this.self.public_out(player_id = this.current_player.id,
-                                         player_name = this.current_player.name,
-                                         raised = raised_by, _id = 'Player Raised')
+                    this.self.public_out(
+                        player_id = this.current_player.id,
+                        player_name = this.current_player.name,
+                        raised = raised_by,
+                        _id = 'Player Raised'
+                    )
 
                 this.player_added_to_pot(this.current_player, money_left_to_call + raised_by)
                 this.current_player.played_turn = True
@@ -349,29 +362,39 @@ class PokerGame:
 
             # process CALL (is the same as if player raised the others by 0)
             elif action == 'call':
-                call_value = money_left_to_call if money_left_to_call < this.current_player.money else this.current_player.money
-                this.self.public_out(player_id = this.current_player.id,
-                                     player_name = this.current_player.name,
-                                     called = call_value ,
-                                     _id = 'Player Called')
+                call_value = money_left_to_call \
+                    if money_left_to_call < this.current_player.money \
+                    else this.current_player.money
+                this.self.public_out(
+                    player_id = this.current_player.id,
+                    player_name = this.current_player.name,
+                    called = call_value ,
+                    _id = 'Player Called'
+                )
                 this.player_added_to_pot(this.current_player, money_left_to_call)
                 this.current_player.played_turn = True
                 this.process_after_input()
                 return True
 
-            # process check if there is no money to call (same as call only for instances when you call 0)
+            # process check if there is no money to call
+            # (same as call only for instances when you call 0)
             elif action == 'check' and money_left_to_call == 0:
-                this.self.public_out(player_id = this.current_player.id,
-                                     player_name = this.current_player.name,
-                                     _id = 'Player Checked')
+                this.self.public_out(
+                    player_id = this.current_player.id,
+                    player_name = this.current_player.name,
+                    _id = 'Player Checked'
+                )
                 this.current_player.played_turn = True
                 this.process_after_input()
                 return True
 
             # process FOLD
             elif action == 'fold':
-                this.self.public_out(player_id = this.current_player.id,
-                player_name = this.current_player.name, _id = 'Player Folded')
+                this.self.public_out(
+                    player_id = this.current_player.id,
+                    player_name = this.current_player.name,
+                    _id = 'Player Folded'
+                )
                 this.current_player.is_folded = True
                 this.current_player.played_turn = True
                 this.process_after_input()
@@ -395,9 +418,11 @@ class PokerGame:
                     player.hand.getKickers()
 
                 this.table.extend(new_cards)
-                this.self.public_out(turn_name = turn_dict[len(this.table)],
-                                     table = this.table,
-                                     _id = 'New Turn')
+                this.self.public_out(
+                    turn_name = turn_dict[len(this.table)],
+                    table = this.table,
+                    _id = 'New Turn'
+                )
                 yield True
 
         # This continues the game and is called with player input
@@ -407,9 +432,12 @@ class PokerGame:
                 this.deal_winnings()
                 return this.close()
 
-            # if everyone or everyone but one went all in and there is more than one player who hasnt folded input stage is over
-            if len(this.players.get_active_players()) <= 1 and this.pot_is_equal() and len(this.players.get_not_folded_players()) >= 2:
-                for _ in range(3 - TABLE_DICT[len(this.table)]): # user input not needed, so turns continue within this same function
+            # if everyone or everyone but one went all in and there
+            # is more than one player who hasnt folded input stage is over
+            if len(this.players.get_active_players()) <= 1 and this.pot_is_equal() \
+            and len(this.players.get_not_folded_players()) >= 2:
+                # user input not needed, so turns continue within this same function
+                for _ in range(3 - TABLE_DICT[len(this.table)]):
                     next(this.turn_gen)
                 this.deal_winnings()
                 return this.close()
@@ -427,48 +455,59 @@ class PokerGame:
 
             this.current_player = this.players.next_active_player_from(this.current_player)
             to_call = this.get_money_to_call() - this.current_player.money_given[TABLE_DICT[len(this.table)]]
-            this.self.public_out(player_name = this.current_player.name,
-                                 player_id = this.current_player.id,
-                                 to_call = to_call, _id = 'To Call')
+            this.self.public_out(
+                player_name = this.current_player.name,
+                player_id = this.current_player.id,
+                to_call = to_call, _id = 'To Call'
+            )
 
         def deal_winnings(this):
             # if all players leave (safety)
-            if len(this.players.get_not_folded_players()) == 0:
-                return None
-
+            if len(this.players.get_not_folded_players()) == 0: return
             # if there is one player who has not folded he gets everything
             if len(this.players.get_not_folded_players()) == 1:
                 winner = this.players.get_not_folded_players()[0]
                 winner.money += sum(this.get_pot_size())
-                this.self.public_out(winner_id = winner.id, winner_name = winner.name,
-                                     won = sum(this.get_pot_size()),
-                                     _id = 'Declare Unfinished Winner')
-                return None
+                this.self.public_out(
+                    winner_id = winner.id,
+                    winner_name = winner.name,
+                    won = sum(this.get_pot_size()),
+                    _id = 'Declare Unfinished Winner'
+                )
+                return
 
-            for player in this.players:
-                player.stake = sum(player.money_given)
-
-            # arranges players who have gone all in by their pot contribution size (from smallest to largest)
-            # player can be all in and folded if he left after going all in and had status is_folded set from outside the round instance
-            all_ins_sorted = sorted([player for player in this.players if player.is_all_in and not player.is_folded],
-                                    key = lambda x: sum(x.money_given))
-            not_all_in_active = [player for player in this.players if not (player.is_all_in or player.is_folded)]
-            # players from smallest to largest stake in pot (not all_in's stake doesnt matter as long as they are last)
-            # subgame means the players who are included in the competition for their bought part of the pot
+            for player in this.players: player.stake = sum(player.money_given)
+            # arranges players who have gone all in by their pot
+            # contribution size (from smallest to largest)
+            # player can be all in and folded if he
+            # left after going all in and had status is_folded set from outside
+            # the round instance
+            all_ins_sorted = sorted([player for player in this.players \
+                if player.is_all_in and not player.is_folded],
+                key = lambda x: sum(x.money_given))
+            not_all_in_active = [player for player in this.players \
+                                 if not (player.is_all_in or player.is_folded)]
+            # players from smallest to largest stake in pot
+            # (not all_in's stake doesnt matter as long as they are last)
+            # subgame means the players who are included in the competition
+            # for their bought part of the pot
             sorted_by_subgames = type(this.players)(all_ins_sorted + not_all_in_active)
             # players grouped by their pot contribution (indexes in sorted_by_subgames list)
-            grouped_indexes = [0] + [i for i in range(1, len(sorted_by_subgames)) if sorted_by_subgames[i - 1].stake < sorted_by_subgames[i].stake]
+            grouped_indexes = [0] + [i for i in range(1, len(sorted_by_subgames)) \
+                if sorted_by_subgames[i - 1].stake < sorted_by_subgames[i].stake]
 
             # show players' hands
             for competitor in sorted_by_subgames:
-                this.self.public_out(player_id = competitor.id,
-                                     player_name = competitor.name,
-                                     player_cards = competitor.cards,
-                                     _id = 'Public Show Cards')
+                this.self.public_out(
+                    player_id = competitor.id,
+                    player_name = competitor.name,
+                    player_cards = competitor.cards,
+                    _id = 'Public Show Cards'
+                )
 
             for i in grouped_indexes:
                 # these are the people competing for the part of the pot they bought
-                subgame_competitors = sorted_by_subgames[i:] 
+                subgame_competitors = sorted_by_subgames[i:]
                 winning_players = subgame_competitors.winners()
 
                 # this is static for the loops bellow
@@ -489,25 +528,30 @@ class PokerGame:
                         else: # if SUBGAME_STAKE == 0 or PLAYER_STAKE == 0, theres nothing to collect
                             continue
 
-                        player_winnings += take_home # winnings are added to the winner (they are added to the money later)
+                        player_winnings += take_home # winnings are added to the winner
                         player.stake -= take_home # stakes are taken from the player
 
-                    # if players collected any left stakes (winnings) it is added to their money, kickers set, and ou
+                    # if players collected any left stakes (winnings)
+                    # it is added to their money, kickers set, and ou
                     if round(player_winnings):
                         winning_split.money += round(player_winnings)
                         # this block is for public_out
-                        # subgame participants are players that you winning_split had to beat to get player_winnings
-                        kickers = HandParser.get_kickers([player.hand for player in subgame_competitors])
-                        this.self.public_out(winner_id = winning_split.id,
-                                             winner_name = winning_split.name,
-                                             won = round(player_winnings),
-                                             hand_name = models.handdict[winning_split.hand.handindex],
-                                             hand_base = list(winning_split.hand.idx2cards()),
-                                             kicker = kickers,
-                                             _id = 'Declare Finished Winner')
+                        # subgame participants are players that you winning_split
+                        # had to beat to get player_winnings
+                        kickers = HandParser.getGroupKickers([player.hand for player in subgame_competitors])
+                        this.self.public_out(
+                            winner_id = winning_split.id,
+                            winner_name = winning_split.name,
+                            won = round(player_winnings),
+                            hand_name = winning_split.hand.handenum.name,
+                            hand_base = list(winning_split.hand.idx2cards()),
+                            kicker = kickers,
+                             _id = 'Declare Finished Winner'
+                        )
 
 
-    ### the methods from here are meant to be overriden when baseclassing this class and implementing game IO
+    ### the methods from here are meant to be overriden when
+    # baseclassing this class and implementing game IO
     # private_out and public_out can implement json files containing json.dumps(kwargs)
 
     # is called with data that should be forwarded to player

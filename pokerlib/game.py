@@ -183,6 +183,7 @@ class PokerGame:
     def new_round(self):
         # round should be None and game should be OK to start
         # another round (external processes should cover this)
+        print(self.round, self.is_ok())
         assert self.round is None and self.is_ok()
 
         self.rounds_played += 1
@@ -406,10 +407,7 @@ class PokerGame:
         # resets played_turn and money_in_pot for every player.
         # Initializes new turn based how many cards were on the table
         def turn_generator(this):
-            turn_dict = {3: 'FLOP', 4: 'TURN', 5: "RIVER"}
-
-            # For FLOP, TURN, RIVER
-            for i in (3, 1, 1):
+            for i, turn in zip((3, 1, 1), ('FLOP', 'TURN', 'RIVER')):
                 new_cards = [next(this.deck) for _ in range(i)]
                 for player in this.players:
                     player.played_turn = False
@@ -419,7 +417,7 @@ class PokerGame:
 
                 this.table.extend(new_cards)
                 this.self.public_out(
-                    turn_name = turn_dict[len(this.table)],
+                    turn_name = turn,
                     table = this.table,
                     _id = 'New Turn'
                 )

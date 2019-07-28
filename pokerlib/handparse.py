@@ -75,9 +75,9 @@ class HandParser:
         for i in reversed(range(0, len(valnums))):
             if valnums[i-1] and valnums[i]:
                 straightcounter += 1
-                if straightcounter == 5: break
+                if straightcounter == 5:
+                    return i - 1
             else: straightcounter = 1
-        return straightcounter, i - 1
 
     @staticmethod
     def getStraightFrom(cards, straightstart):
@@ -91,49 +91,46 @@ class HandParser:
         return idxs
 
     def analyse(self):
-        # card iteration order
-        handrange = reversed(range(0, self.ncards))
+        hrange = reversed(range(0, self.ncards)) # card iteration order
         # number of zero, one, two pair, three and four of a kinds
         npairs = [0] * 5
         for num in self.valnums: npairs[num] += 1
-        # check flush
+
         flushsuit = [i for i in range(4) if self.suitnums[i] >= 5]
-        # check straight
-        straightcount, straightstart = self.checkStraight(self.valnums)
+        straightstart = self.checkStraight(self.valnums)
 
         # straight flush
-        if straightcount == 5 and flushsuit:
-            cards = []
-            suitedVals = [0] * 13
+        if straightstart is not None and flushsuit:
+            cards, suited_vals = [], [0] * 13
             for val, suit in self.cards:
                 if suit == flushsuit[0]:
-                    suitedVals[val] += 1
+                    suited_vals[val] += 1
                     cards.append([val, suit])
             # can revalue straightcount, flush > straight
-            straightcount, i = self.checkStraight(suitedVals)
-            if straightcount == 5:
+            sfstart = self.checkStraight(suited_vals)
+            if sfstart is not None:
                 self.handenum = Hand.STRAIGHTFLUSH
-                self.handbase = self.getStraightFrom(cards, i)
+                self.handbase = self.getStraightFrom(cards, sfstart)
                 return
 
         # four of a kind
         if npairs[4]:
             vals = [i for i in range(13) if self.valnums[i] == 4]
-            cards = [i for i in handrange if self.cards[i][0] == vals[0]]
             self.handenum = Hand.FOUROFAKIND
-            self.handbase = cards
+            self.handbase = [i for i in hrange if \
+                             self.cards[i][0] == vals[0]]
 
         # full house
         elif npairs[3] == 2 or npairs[3] == 1 and npairs[2] >= 1:
-            inhouse = [False] * 13
-            threes, twos = [], []
+            three, two = [], []
             for val, num in enumerate(self.valnums):
                 if num == 3: threes.append(val)
                 elif num == 2: twos.append(val)
             maxvals = [threes.pop(), max(threes + twos)]
             cards, i = [], self.ncards - 1
             while len(cards) < 5:
-                if self.cards[i][0] in maxvals: cards.append(i)
+                if self.cards[i][0] in maxvals:
+                    cards.append(i)
                 i -= 1
             self.handenum = Hand.FULLHOUSE
             self.handbase = cards
@@ -141,21 +138,21 @@ class HandParser:
         # flush
         elif flushsuit:
             fcolor = flushsuit[0]
-            cards = [i for i in handrange if self.cards[i][1] == fcolor]
             self.handenum = Hand.FLUSH
-            self.handbase = cards[:5]
+            self.handbase = [i for i in hrange if \
+                             self.cards[i][1] == fcolor][:5]
 
         # straight
-        elif straightcount == 5:
+        elif straightstart is not None:
             self.handenum = Hand.STRAIGHT
             self.handbase = self.getStraightFrom(self.cards, straightstart)
 
         # three of a kind
         elif npairs[3] == 1:
-            vals = [i for i in range(13) if self.valnums[i] == 3]
-            cards = [i for i in handrange if self.cards[i][0] == vals[0]]
+            val = [i for i in range(13) if self.valnums[i] == 3][0]
             self.handenum = Hand.THREEOFAKIND
-            self.handbase = cards
+            self.handbase = [i for i in hrange if \
+                             self.cards[i][0] == val]
 
         # two / one pair
         elif npairs[2]:
@@ -164,7 +161,8 @@ class HandParser:
             vals = [i for i in range(13) if self.valnums[i] == 2]
             cards, i = [], self.ncards - 1
             while len(cards) < lim:
-                if self.cards[i][0] in vals: cards.append(i)
+                if self.cards[i][0] in vals:
+                    cards.append(i)
                 i -= 1
             self.handenum = hand
             self.handbase = cards
@@ -215,4 +213,3 @@ class HandParser:
         for w_val, l_val in searchForKicker:
             kickers.append(w_val)
             if w_val > l_val: return kickers
-

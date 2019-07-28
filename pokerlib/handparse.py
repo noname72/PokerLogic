@@ -72,7 +72,7 @@ class HandParser:
     @staticmethod
     def checkStraight(valnums):
         straightcounter = 1
-        for i in reversed(range(0, len(valnums))):
+        for i in reversed(range(len(valnums))):
             if valnums[i-1] and valnums[i]:
                 straightcounter += 1
                 if straightcounter == 5:
@@ -90,7 +90,7 @@ class HandParser:
                 instraight[value] = False
         return idxs
 
-    def analyse(self):
+    def parse(self):
         hrange = reversed(range(0, self.ncards)) # card iteration order
         # number of zero, one, two pair, three and four of a kinds
         npairs = [0] * 5
@@ -101,16 +101,20 @@ class HandParser:
 
         # straight flush
         if straightstart is not None and flushsuit:
-            cards, suited_vals = [], [0] * 13
-            for val, suit in self.cards:
+            permut = [0] * len(self.cards)
+            suited_cards, suited_vals = [], [0] * 13
+            for i, (val, suit) in enumerate(self.cards):
                 if suit == flushsuit[0]:
+                    permut[len(suited_cards)] = i
                     suited_vals[val] += 1
-                    cards.append([val, suit])
+                    suited_cards.append([val, suit])
+
             # can revalue straightcount, flush > straight
             sfstart = self.checkStraight(suited_vals)
             if sfstart is not None:
                 self.handenum = Hand.STRAIGHTFLUSH
-                self.handbase = self.getStraightFrom(cards, sfstart)
+                suited_handbase = self.getStraightFrom(suited_cards, sfstart)
+                self.handbase = [permut[i] for i in suited_handbase]
                 return
 
         # four of a kind
@@ -173,12 +177,13 @@ class HandParser:
             self.handbase = [self.ncards - 1]
 
     def getKickers(self):
-        self.kickers = []
+        self.kickers.clear()
         inhand = [False] * self.ncards
         for i in self.handbase: inhand[i] = True
-        for i, _ in zip(reversed(range(0, len(self.cards))),
-                        range(5 - len(self.handbase))):
+        i = len(self.cards) - 1
+        while len(self.kickers) < 5 - len(self.handbase) and i > 0:
             if not inhand[i]: self.kickers.append(i)
+            i -= 1
 
     @classmethod
     def getGroupKickers(cls, hands: list):

@@ -3,14 +3,18 @@ from pokerlib.enums import Hand, Value, Suit
 
 class HandParser:
     __slots__ = ["original", "ncards", "cards",
+                 "handenum", "handbase", "kickers",
                  "__valnums", "__suitnums",
-                 "__flushsuit", "__straightstart",
-                 "handenum", "handbase", "kickers"]
+                 "__flushsuit", "__straightindexes"]
 
     def __init__(self, cards: list):
         self.original = cards
         self.ncards = len(cards)
         self.cards = sorted(cards, key = lambda x: x[0])
+
+        self.handenum = None
+        self.handbase = []
+        self.kickers = []
 
         self.__valnums = [0] * 13
         self.__suitnums = [0] * 4
@@ -24,22 +28,27 @@ class HandParser:
                 self.__flushsuit = suit
                 break
 
-        self.__straightstart = self.checkStraight(self.__valnums)
+        self.__straightindexes = \
+            self.getStraightIndexes(self.__valnums)
 
-        self.kickers = []
-        self.handenum = None
-        self.handbase = []
-
-    def idx2cards(self, full=True):
-        if full is True: return map(
+    @property
+    def handbasecards(self):
+        return map(
             lambda i: self.cards[i],
-            self.handbase + self.kickers)
-        elif full is False: return map(
+            self.handbase
+            )
+    @property
+    def kickercards(self):
+        return map(
             lambda i: self.cards[i],
-            self.handbase)
-        elif full == 'k': return map(
+            self.handbase + self.kickers
+            )
+    @property
+    def handfullcards(self):
+        return map(
             lambda i: self.cards[i],
-            self.kickers)
+            self.handbase + self.kickers
+            )
 
     def __str__(self):
         return str(self.cards)
@@ -49,16 +58,16 @@ class HandParser:
 
     def __eq__(self, other):
         if self.handenum != other.handenum: return False
-        for (s_val, _), (o_val, _) in zip(self.idx2cards(),
-                                          other.idx2cards()):
+        for (s_val, _), (o_val, _) in zip(self.handfullcards,
+                                          other.handfullcards):
             if s_val != o_val: return False
         return True
 
     def __gt__(self, other):
         if self.handenum != other.handenum:
             return self.handenum > other.handenum
-        for (s_val, _), (o_val, _) in zip(self.idx2cards(),
-                                          other.idx2cards()):
+        for (s_val, _), (o_val, _) in zip(self.handfullcards,
+                                          other.handfullcards):
             if s_val != o_val: return s_val > o_val
         return False
 
@@ -70,6 +79,10 @@ class HandParser:
         self.ncards += len(cards)
         map(lambda card: insort(self.cards, card), cards)
 
+        self.handenum = None
+        self.handbase.clear()
+        self.kickers.clear()
+
         for value, suit in cards:
             self.__valnums[value] += 1
             self.__suitnums[suit] += 1
@@ -79,155 +92,164 @@ class HandParser:
                 self.__flushsuit = suit
                 break
 
-        self.__straightstart = self.checkStraight(self.__valnums)
+        self.__straightindexes = \
+            self.getStraightIndexes(self.__valnums)
 
     @staticmethod
-    def checkStraight(valnums):
-        straightcounter = 1
+    def getStraightIndexes(valnums):
+        straightindexes = [None] * 5
+        straightlen, indexptr = 1, sum(valnums)
         for i in reversed(range(len(valnums))):
+            indexptr -= valnums[i]
+            straightindexes[straightlen-1] = indexptr
             if valnums[i-1] and valnums[i]:
-                straightcounter += 1
-                if straightcounter == 5:
-                    return i - 1
-            else: straightcounter = 1
-
-    @staticmethod
-    def getStraightFrom(cards, straightstart):
-        instraight, idxs = [False] * 13, []
-        for i in range(straightstart, straightstart + 5):
-            instraight[i] = True
-        for i, (value, _) in enumerate(cards):
-            if instraight[value]:
-                idxs.append(i)
-                instraight[value] = False
-        return idxs
+                straightlen += 1
+                if straightlen == 5:
+                    indexptr -= valnums[i-1]
+                    if indexptr <= -1:
+                        indexptr = sum(valnums)-1
+                    straightindexes[4] = indexptr
+                    return straightindexes
+            else: straightlen = 1
 
     def setStraightFlush(self):
-        permut = [0] * len(self.cards)
-        suited_cards, suited_vals = [], [0] * 13
+        counter = 0
+        suited_vals, permut = [0] * 13, [0] * len(self.cards)
         for i, (val, suit) in enumerate(self.cards):
              if suit == self.__flushsuit:
-                 permut[len(suited_cards)] = i
                  suited_vals[val] += 1
-                 suited_cards.append([val, suit])
+                 permut[counter] = i
+                 counter += 1
 
-        stflstart = self.checkStraight(suited_vals)
-        if stflstart is not None:
-            suited_handbase = self.getStraightFrom(suited_cards, stflstart)
+        suited_handbase = self.getStraightIndexes(suited_vals)
+        if suited_handbase is not None:
+            self.handenum = Hand.STRAIGHTFLUSH
             self.handbase = [permut[i] for i in suited_handbase]
             return True
+
         return False
 
     def setFourOfAKind(self):
-        vals = [val for val in Value if self.__valnums[val] == 4]
-        self.handbase = [i for i in reversed(range(self.ncards))
-                         if self.cards[i][0] == vals[0]]
+        self.handenum = Hand.FOUROFAKIND
+
+        hindex = self.ncards
+        for valnum in self.__valnums:
+            hindex += valnum
+            if valnum == 4: break
+
+        self.handbase = [hindex-3, hindex-2, hindex-1, hindex]
 
     def setFullHouse(self):
-        self.handbase.clear()
+        self.handenum = Hand.FULLHOUSE
+        
         threes, twos = [], []
-        for val, num in enumerate(self.__valnums):
-            if num == 3: threes.append(val)
-            elif num == 2: twos.append(val)
+        hindex = -1
+        for val, valnum in enumerate(self.__valnums):
+            hindex += valnum
+            if valnum == 3: threes.append((val, hindex))
+            elif valnum == 2: twos.append((val, hindex))
 
-        maxvals = [threes.pop(), max(threes + twos)]
-        i = self.ncards - 1
-        while len(self.handbase) < 5:
-            if self.cards[i][0] in maxvals:
-                self.handbase.append(i)
-            i -= 1
+        i1, i2 = [threes.pop()[1], max(threes + twos)[1]]
+        self.handbase = [i1-2, i1-1, i1, i2-1, i2]
 
     def setFlush(self):
+        self.handenum = Hand.FLUSH
         self.handbase.clear()
+        
         counter = 0
         for i in reversed(range(self.ncards)):
             if self.cards[i][1] == self.__flushsuit:
                 self.handbase.append(i)
                 counter += 1
-            if counter == 5: break
+            if counter == 5:
+                break
 
     def setStraight(self):
-        self.handbase = self.getStraightFrom(self.cards, self.__straightstart)
+        self.handenum = Hand.STRAIGHT
+        self.handbase = self.__straightindexes
 
     def setThreeOfAKind(self):
-        threeval = [i for i in Value if self.__valnums[i] == 3][0]
-        self.handbase = [i for i in reversed(range(self.ncards))
-                         if self.cards[i][0] == threeval]
+        self.handenum = Hand.THREEOFAKIND
+        self.handbase.clear()
+        
+        hindex = self.ncards
+        for valnum in reversed(self.__valnums):
+            hindex -= valnum
+            if valnum == 3: break
+
+        self.handbase = [hindex, hindex+1, hindex+2]
 
     def setTwoPair(self):
+        self.handenum = Hand.TWOPAIR
         self.handbase.clear()
-        vals = [val for val in Value if self.__valnums[val] == 2]
-        i = self.ncards - 1
-        while len(self.handbase) < 4:
-            if any([self.cards[i][0] == val for val in vals]):
-                self.handbase.append(i)
-            i -= 1
+
+        hindex, paircounter = self.ncards, 0
+        for valnum in reversed(self.__valnums):
+            hindex -= valnum
+            if valnum == 2:
+                self.handbase.extend([hindex, hindex+1])
+                paircounter += 1
+            if paircounter == 2: break
 
     def setOnePair(self):
-        self.handbase.clear()
-        pairval = [val for val in Value if self.__valnums[val] == 2][0]
-        self.handbase = [i for i in reversed(range(self.ncards))
-                         if self.cards[i][0] == pairval]
+        self.handenum = Hand.ONEPAIR
+
+        hindex = self.ncards
+        for valnum in reversed(self.__valnums):
+            hindex -= valnum
+            if valnum == 2: break
+
+        self.handbase = [hindex, hindex+1]
 
     def setHighCard(self):
-        self.handbase.clear()
-        self.handbase.append(self.ncards - 1)
+        self.handenum = Hand.HIGHCARD
+        self.handbase = [self.ncards - 1]
 
     def parse(self):
         pairnums = [0] * 5
         for num in self.__valnums: pairnums[num] += 1
 
         # straight flush
-        if None not in [self.__straightstart, self.__flushsuit]:
-            if self.setStraightFlush():
-                self.handenum = Hand.STRAIGHTFLUSH
+        if None not in [self.__straightindexes, self.__flushsuit] \
+        and self.setStraightFlush(): pass
 
         # four of a kind
-        if pairnums[4]:
-            self.handenum = Hand.FOUROFAKIND
+        elif pairnums[4]:
             self.setFourOfAKind()
 
         # full house
         elif pairnums[3] == 2 or pairnums[3] == 1 and pairnums[2] >= 1:
-            self.handenum = Hand.FULLHOUSE
             self.setFullHouse()
 
         # flush
         elif self.__flushsuit is not None:
-            self.handenum = Hand.FLUSH
             self.setFlush()
 
         # straight
-        elif self.__straightstart is not None:
-            self.handenum = Hand.STRAIGHT
+        elif self.__straightindexes is not None:
             self.setStraight()
 
         # three of a kind
         elif pairnums[3]:
-            self.handenum = Hand.THREEOFAKIND
             self.setThreeOfAKind()
 
         # two pair
         elif pairnums[2] >= 2:
-            self.handenum = Hand.TWOPAIR
             self.setTwoPair()
 
         # one pair
         elif pairnums[2] == 1:
-            self.handenum = Hand.ONEPAIR
             self.setOnePair()
 
         # high card
-        else:
-            self.handenum = Hand.HIGHCARD
-            self.setHighCard()
+        else: self.setHighCard()
 
     def getKickers(self):
         self.kickers.clear()
         inhand = [False] * self.ncards
         for i in self.handbase: inhand[i] = True
         i = len(self.cards) - 1
-        while len(self.kickers) < 5 - len(self.handbase) and i > 0:
+        while len(self.kickers) < 5 - len(self.handbase) and i >= 0:
             if not inhand[i]: self.kickers.append(i)
             i -= 1
 
@@ -240,10 +262,10 @@ class HandParser:
 
         # if winner won by a hand level there is no kicker
         if winner.handenum > max_loser.handenum: return
-        winner_best_vals = [val for val, _ in winner.idx2cards(False)]
-        winner_kicker_vals = [val for val, _ in winner.idx2cards('k')]
-        loser_best_vals = [val for val, _ in max_loser.idx2cards(False)]
-        loser_kicker_vals = [val for val, _ in max_loser.idx2cards('k')]
+        winner_best_vals = [val for val, _ in winner.handbasecards]
+        winner_kicker_vals = [val for val, _ in winner.kickercards]
+        loser_best_vals = [val for val, _ in max_loser.handbasecards]
+        loser_kicker_vals = [val for val, _ in max_loser.kickercards]
 
         # the hands represented by five hands do not have kickers
         if winner.handenum not in [Hand.STRAIGHT, Hand.FLUSH,
@@ -264,11 +286,3 @@ class HandParser:
         for w_val, l_val in searchForKicker:
             kickers.append(w_val)
             if w_val > l_val: return kickers
-
-if __name__ == '__main__':
-    from random import sample
-    from timeit import timeit
-    n = 10**5
-    cards = [[val, suit] for suit in Suit for val in Value]
-    print(timeit(lambda: HandParser(sample(cards, 7)).parse(), number=n))
-    

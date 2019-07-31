@@ -101,13 +101,13 @@ class HandParser:
         straightlen, indexptr = 1, sum(valnums)
         for i in reversed(range(len(valnums))):
             indexptr -= valnums[i]
-            straightindexes[straightlen-1] = indexptr
             if valnums[i-1] and valnums[i]:
+                straightindexes[straightlen-1] = indexptr
                 straightlen += 1
                 if straightlen == 5:
-                    indexptr -= valnums[i-1]
-                    if indexptr <= -1:
+                    if indexptr == 0:
                         indexptr = sum(valnums)-1
+                    else: indexptr -= valnums[i-1]
                     straightindexes[4] = indexptr
                     return straightindexes
             else: straightlen = 1
@@ -141,7 +141,7 @@ class HandParser:
 
     def setFullHouse(self):
         self.handenum = Hand.FULLHOUSE
-        
+
         threes, twos = [], []
         hindex = -1
         for val, valnum in enumerate(self.__valnums):
@@ -155,7 +155,7 @@ class HandParser:
     def setFlush(self):
         self.handenum = Hand.FLUSH
         self.handbase.clear()
-        
+
         counter = 0
         for i in reversed(range(self.ncards)):
             if self.cards[i][1] == self.__flushsuit:
@@ -171,13 +171,13 @@ class HandParser:
     def setThreeOfAKind(self):
         self.handenum = Hand.THREEOFAKIND
         self.handbase.clear()
-        
-        hindex = self.ncards
-        for valnum in reversed(self.__valnums):
-            hindex -= valnum
+
+        hindex = -1
+        for valnum in self.__valnums:
+            hindex += valnum
             if valnum == 3: break
 
-        self.handbase = [hindex, hindex+1, hindex+2]
+        self.handbase = [hindex-2, hindex-1, hindex]
 
     def setTwoPair(self):
         self.handenum = Hand.TWOPAIR
@@ -189,17 +189,17 @@ class HandParser:
             if valnum == 2:
                 self.handbase.extend([hindex, hindex+1])
                 paircounter += 1
-            if paircounter == 2: break
+                if paircounter == 2: break
 
     def setOnePair(self):
         self.handenum = Hand.ONEPAIR
 
         hindex = self.ncards
-        for valnum in reversed(self.__valnums):
-            hindex -= valnum
+        for valnum in self.__valnums:
+            hindex += valnum
             if valnum == 2: break
 
-        self.handbase = [hindex, hindex+1]
+        self.handbase = [hindex-1, hindex]
 
     def setHighCard(self):
         self.handenum = Hand.HIGHCARD
@@ -246,10 +246,12 @@ class HandParser:
 
     def getKickers(self):
         self.kickers.clear()
+        
         inhand = [False] * self.ncards
         for i in self.handbase: inhand[i] = True
-        i = len(self.cards) - 1
-        while len(self.kickers) < 5 - len(self.handbase) and i >= 0:
+        
+        i, lim = self.ncards - 1, 5 - len(self.handbase)
+        while len(self.kickers) < lim and i >= 0:
             if not inhand[i]: self.kickers.append(i)
             i -= 1
 

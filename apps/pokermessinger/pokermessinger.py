@@ -4,11 +4,11 @@ from sys import path
 from random import choice
 from pathlib import Path
 import sqlite3
-from fbchat import 
+from fbchat import Client
 from fbchat.models import *
 path.append(str(Path().cwd().parent.parent))
 from pokerlib import sqlmeths, timemeths
-from pokerlib.handparse import models, HandParser
+from pokerlib.handparser import HandParser
 from pokerlib.game import PlayerGroup, Player, PokerGame
 
 # this is the documentation and the link is sent to every new player
@@ -25,7 +25,7 @@ MONEY_WAITING_PERIOD = 4 # how long until a player can re-request for money
 MONEY_ADD_PER_PERIOD = 100 # how much a player gets if he requests for money
 
 VALUES = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
-SUITS = ['♠', '♣️', '♦️', '♥️']
+SUITS = ['♠', '♣', '♦', '♥']
 
 # valid statements that a dealer receives from players (they should all be lowercase)
 INITIALIZE_GAME = '::init' # adds a FbPokerGame object to the Dealer instance attribute dict
@@ -312,6 +312,29 @@ class FbPokerGame(PokerGame):
     'Player Lost Money': lambda player_id, player_name: player_name + ' has been removed from the game'
     }
 
+    # this is meant to be a helper function to outs, when hand name is constructed
+    # (game sends only hand_name and cards from which hand consists to public_out)
+    @staticmethod
+    def hand_repr(best_hand_name, best_hand_base, vals_repr=range(13), suits_repr=range(4)):
+        status_vals = [vals_repr[best_hand_base[i][0]] for i in range(len(best_hand_base))]
+        status_suit = suits_repr[best_hand_base[0][1]]
+
+        if best_hand_name in [Hand.OnePair, Hand.ThreeOfAKind, Hand.FourOfAKind]:
+            return f'{best_hand_name} of {status_vals[0]}\'s'
+        elif best_hand_name == 'High Card':
+            return f'High Card {status_vals[0]}'
+        elif best_hand_name == 'Two Pair':
+            return f'Two Pair, {status_vals[0]}\'s and {status_vals[2]}\'s'
+        elif best_hand_name == 'Straight':
+            return f'{"Straight"} from {status_vals[-1]}\'s to {status_vals[0]}\'s'
+        elif best_hand_name == 'Flush':
+            return f'Flush of {status_suit} with high card {status_vals[0]}'
+        elif best_hand_name == 'Full House':
+            return f'Full House {status_vals[0]}\'s over {status_vals[-1]}\'s'
+        elif best_hand_name == 'Straight Flush':
+            return f'{"Straight Flush"} of {status_suit} from {status_vals[0]}\'s to {status_vals[-1]}\'s'
+        return ''
+
     @staticmethod
     def style_cards(cards, kicker=False):
         if kicker is False:
@@ -341,10 +364,12 @@ class FbPokerGame(PokerGame):
         if text:
             send = text
         elif kwargs['_id'] in FbPokerGame.IO_actions:
+            print(kwargs)
             send = FbPokerGame.IO_actions[kwargs.pop('_id')](**kwargs)
         if send:
             DEALER.sendMessage(send, thread_id = self.table_id,
             thread_type = ThreadType.GROUP)
+    
 
 
 players_sql = '''

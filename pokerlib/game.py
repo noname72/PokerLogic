@@ -2,8 +2,8 @@ from itertools import cycle
 from copy import copy as shallowcopy
 try: from numpy.random import shuffle # numpy is faster (fcourse)
 except ModuleNotFoundError as e: from random import shuffle
-from pokerlib.enums import Value, Suit
-from pokerlib.handparse import HandParser
+from pokerlib.enums import Value, Suit, Hand
+from pokerlib.handparser import HandParser
 
 # this was just needed constantly within PokerGame
 TABLE_DICT = {0: 0, 3: 1, 4: 2, 5: 3}
@@ -412,7 +412,7 @@ class PokerGame:
                 for player in this.players:
                     player.played_turn = False
                     player.hand.addCards(new_cards)
-                    player.hand.analyse()
+                    player.hand.parse()
                     player.hand.getKickers()
 
                 this.table.extend(new_cards)
@@ -541,8 +541,8 @@ class PokerGame:
                             winner_id = winning_split.id,
                             winner_name = winning_split.name,
                             won = round(player_winnings),
-                            hand_name = winning_split.hand.handenum.name,
-                            hand_base = list(winning_split.hand.idx2cards()),
+                            hand_name = winning_split.hand.handenum,
+                            hand_base = list(winning_split.hand.handbasecards),
                             kicker = kickers,
                              _id = 'Declare Finished Winner'
                         )
@@ -561,25 +561,3 @@ class PokerGame:
     def public_out(self, *args, **kwargs):
         ...
         pass
-
-    # this is meant to be a helper function to outs, when hand name is constructed
-    # (game sends only hand_name and cards from which hand consists to public_out)
-    @staticmethod
-    def hand_repr(best_hand_name, best_hand_base, vals_repr=range(13), suits_repr=range(4)):
-        status_vals = [vals_repr[best_hand_base[i][0]] for i in range(len(best_hand_base))]
-        status_suit = suits_repr[best_hand_base[0][1]]
-
-        if best_hand_name in ['One Pair', 'Three of a Kind', 'Four of a Kind']:
-            return f'{best_hand_name} of {status_vals[0]}\'s'
-        elif best_hand_name == 'High Card':
-            return f'High Card {status_vals[0]}'
-        elif best_hand_name == 'Two Pair':
-            return f'Two Pair, {status_vals[0]}\'s and {status_vals[2]}\'s'
-        elif best_hand_name == 'Straight':
-            return f'{"Straight"} from {status_vals[-1]}\'s to {status_vals[0]}\'s'
-        elif best_hand_name == 'Flush':
-            return f'Flush of {status_suit} with high card {status_vals[0]}'
-        elif best_hand_name == 'Full House':
-            return f'Full House {status_vals[0]}\'s over {status_vals[-1]}\'s'
-        elif best_hand_name == 'Straight Flush':
-            return f'{"Straight Flush"} of {status_suit} from {status_vals[0]}\'s to {status_vals[-1]}\'s'

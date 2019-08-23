@@ -77,7 +77,7 @@ class HandParser:
     def addCards(self, cards):
         self.original.extend(cards)
         self.ncards += len(cards)
-        map(lambda card: insort(self.cards, card), cards)
+        for card in cards: insort(self.cards, card)
 
         self.handenum = None
         self.handbase.clear()
@@ -132,12 +132,12 @@ class HandParser:
     def setFourOfAKind(self):
         self.handenum = Hand.FOUROFAKIND
 
-        hindex = self.ncards
+        hindex = -1
         for valnum in self.__valnums:
             hindex += valnum
             if valnum == 4: break
 
-        self.handbase = [hindex-3, hindex-2, hindex-1, hindex]
+        self.handbase = [hindex, hindex-1, hindex-2, hindex-3]
 
     def setFullHouse(self):
         self.handenum = Hand.FULLHOUSE
@@ -150,7 +150,7 @@ class HandParser:
             elif valnum == 2: twos.append((val, hindex))
 
         i1, i2 = [threes.pop()[1], max(threes + twos)[1]]
-        self.handbase = [i1-2, i1-1, i1, i2-1, i2]
+        self.handbase = [i1, i1-1, i1-2, i2, i2-1]
 
     def setFlush(self):
         self.handenum = Hand.FLUSH
@@ -177,7 +177,7 @@ class HandParser:
             hindex += valnum
             if valnum == 3: break
 
-        self.handbase = [hindex-2, hindex-1, hindex]
+        self.handbase = [hindex, hindex-1, hindex-2]
 
     def setTwoPair(self):
         self.handenum = Hand.TWOPAIR
@@ -187,19 +187,19 @@ class HandParser:
         for valnum in reversed(self.__valnums):
             hindex -= valnum
             if valnum == 2:
-                self.handbase.extend([hindex, hindex+1])
+                self.handbase.extend([hindex+1, hindex])
                 paircounter += 1
                 if paircounter == 2: break
 
     def setOnePair(self):
         self.handenum = Hand.ONEPAIR
 
-        hindex = self.ncards
+        hindex = -1
         for valnum in self.__valnums:
             hindex += valnum
             if valnum == 2: break
 
-        self.handbase = [hindex-1, hindex]
+        self.handbase = [hindex, hindex-1]
 
     def setHighCard(self):
         self.handenum = Hand.HIGHCARD
@@ -243,6 +243,8 @@ class HandParser:
 
         # high card
         else: self.setHighCard()
+
+        self.getKickers()
 
     def getKickers(self):
         self.kickers.clear()

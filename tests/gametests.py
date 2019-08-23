@@ -1,7 +1,7 @@
 from pathlib import Path
 from sys import path
 path.append(str(Path().cwd().parent))
-from pokerlib.handparse import HandParser
+from pokerlib.handparser import HandParser
 from pokerlib.game import PlayerGroup, Player, PokerGame
 
 PLAYERS = ['Nejc', 'Tjasa']

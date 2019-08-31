@@ -2,10 +2,12 @@ from bisect import insort
 from pokerlib.enums import Hand, Value, Suit
 
 class HandParser:
-    __slots__ = ["original", "ncards", "cards",
-                 "handenum", "handbase", "kickers",
-                 "__valnums", "__suitnums",
-                 "__flushsuit", "__straightindexes"]
+    __slots__ = [
+        "original", "ncards", "cards",
+        "handenum", "handbase", "kickers",
+        "__valnums", "__suitnums",
+        "__flushsuit", "__straightindexes"
+    ]
 
     def __init__(self, cards: list):
         self.original = cards

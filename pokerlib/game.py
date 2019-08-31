@@ -183,7 +183,6 @@ class PokerGame:
     def new_round(self):
         # round should be None and game should be OK to start
         # another round (external processes should cover this)
-        print(self.round, self.is_ok())
         assert self.round is None and self.is_ok()
 
         self.rounds_played += 1
@@ -413,7 +412,6 @@ class PokerGame:
                     player.played_turn = False
                     player.hand.addCards(new_cards)
                     player.hand.parse()
-                    player.hand.getKickers()
 
                 this.table.extend(new_cards)
                 this.self.public_out(
@@ -480,10 +478,10 @@ class PokerGame:
             # player can be all in and folded if he
             # left after going all in and had status is_folded set from outside
             # the round instance
-            all_ins_sorted = sorted([player for player in this.players \
+            all_ins_sorted = sorted([player for player in this.players
                 if player.is_all_in and not player.is_folded],
                 key = lambda x: sum(x.money_given))
-            not_all_in_active = [player for player in this.players \
+            not_all_in_active = [player for player in this.players
                                  if not (player.is_all_in or player.is_folded)]
             # players from smallest to largest stake in pot
             # (not all_in's stake doesnt matter as long as they are last)
@@ -491,7 +489,7 @@ class PokerGame:
             # for their bought part of the pot
             sorted_by_subgames = type(this.players)(all_ins_sorted + not_all_in_active)
             # players grouped by their pot contribution (indexes in sorted_by_subgames list)
-            grouped_indexes = [0] + [i for i in range(1, len(sorted_by_subgames)) \
+            grouped_indexes = [0] + [i for i in range(1, len(sorted_by_subgames))
                 if sorted_by_subgames[i - 1].stake < sorted_by_subgames[i].stake]
 
             # show players' hands

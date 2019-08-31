@@ -24,42 +24,42 @@ class User:
         self.__players[_id] = player
         return self
 
-    class Player:
+class Player:
         
-        def __init__(self, _id, name, money):
-            self.name = name
-            self.id = _id
+    def __init__(self, _id, name, money):
+        self.name = name
+        self.id = _id
              
-            self.money = money
+        self.money = money
 
-            self.cards = tuple()
-            self.hand = None
-            self.is_folded = False
-            self.is_all_in = False
-            self.turn_stake = [0, 0, 0, 0]
+        self.cards = tuple()
+        self.hand = None
+        self.is_folded = False
+        self.is_all_in = False
+        self.turn_stake = [0, 0, 0, 0]
 
-            self.played_turn = False
+        self.played_turn = False
 
-        @property
-        def is_active(self):
-            return not (self.is_folded or self.is_all_in)
+    @property
+    def is_active(self):
+        return not (self.is_folded or self.is_all_in)
 
-        def __repr__(self):
-            return f"Player({self.name}, {self.money})"
+    def __repr__(self):
+        return f"Player({self.name}, {self.money})"
         
-        def __str__(self):
-            return self.name
+    def __str__(self):
+        return self.name
 
-        def __eq__(self, other):
-            return self.id == other.id
+    def __eq__(self, other):
+        return self.id == other.id
 
-        def reset(self):
-            self.cards = tuple()
-            self.hand = None
-            self.is_folded = False
-            self.is_all_in = False
-            self.turn_stake = [0, 0, 0, 0]
-            self.played_turn = False
+    def reset(self):
+        self.cards = tuple()
+        self.hand = None
+        self.is_folded = False
+        self.is_all_in = False
+        self.turn_stake = [0, 0, 0, 0]
+        self.played_turn = False
 
 class PlayerSprite:
 

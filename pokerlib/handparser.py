@@ -259,10 +259,15 @@ class HandParser:
             if not inhand[i]: self.kickers.append(i)
             i -= 1
 
-    @classmethod
-    def getGroupKickers(cls, hands: list):
-        winner = max(hands)
-        losers = [hand for hand in hands if hand < winner]
+
+class HandParserGroup:
+
+    def __init__(self, hands):
+        self.hands = hands
+
+    def getGroupKickers(self):
+        winner = max(self.hands)
+        losers = [hand for hand in self.hands if hand < winner]
         if not losers: return # everyone in hands is split evenly
         max_loser = max(losers)
 

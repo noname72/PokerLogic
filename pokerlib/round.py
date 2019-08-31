@@ -1,15 +1,12 @@
+from operator import add
 from math import inf
 from random import sample
 
-from sys import path
-from pathlib import Path
-path.append(str(Path().cwd().parent))
+from pokerlib.enums import *
+from pokerlib.player import Player, PlayerGroup
+from pokerlib.handparser import HandParser, HandParserGroup
 
-from pokerlib.enums import Suit, Value, Turn, PublicOutId
-from pokerlib.player import PlayerSprite
-from pokerlib.handparser import HandParser
-
-# Round doesnt check for:
+# Round doesn't check for:
 # - all in calls,
 # - all in raises,
 # - unvalid checks (check when call is needed)
@@ -23,7 +20,7 @@ class Round:
 
     def __init__(self, players, button, small_blind, big_blind):
         self.big_blind = big_blind
-        self.small_blind = amall_blind
+        self.small_blind = small_blind
         
         self.players = players
         self.button = button
@@ -37,18 +34,18 @@ class Round:
 
         for player in self.players:
             player.reset()
-            player.cards = (next(deck), next(deck))
+            player.cards = (next(self.deck), next(self.deck))
             player.hand = HandParser(list(player.cards))
 
             self.privateOut(
                 PrivateOutId.DEALTCARDS,
                 player.id,
-                dict(cards = player.cards)
+                cards = player.cards
             )     
 
-        self.dealBlids()
         next(self.turn_generator)
-        self.processAfterInput()
+        self.dealBlinds()
+        self.processState()
 
     @property
     def current_player(self):
@@ -84,8 +81,8 @@ class Round:
         ] or [0])
         
         return (
-            len(set(active_money)) == 1 and
-            active_money[0] >= all_in_max_pot
+            len(set(active_pots)) == 1 and
+            active_pots[0] >= all_in_max_pot
         )
     
     def deckIterator(self):
@@ -106,9 +103,8 @@ class Round:
             
             self.publicOut(
                 PublicOutId.NEWTURN,
-                dict(turn_name = turn,
-                     table = self.table
-                )
+                turn_name = turn,
+                table = self.table
             )
                                 
             yield
@@ -118,19 +114,20 @@ class Round:
         i = self.current_index
         self.current_index = self.players.nextActiveIndex(i)
             
-
     def addToPot(self, player, money):
         if 0 <= money < player.money:
             player.money -= money
-            player.turn_stake[self.turn] += money  
+            player.turn_stake[self.turn] += money
+            player.stake += money
         else:
             player.turn_stake[self.turn] += player.money
+            player.stake += player.money
             player.money = 0
             player.is_all_in = True
             
             self.publicOut(
-                PublicOutId.WENTALLIN,
-                dict(player_id = player.id)
+                PublicOutId.PLAYERALLIN,
+                player_id = player.id
             )
 
     def dealBlinds(self):
@@ -141,18 +138,16 @@ class Round:
         
         self.publicOut(
             PublicOutId.SMALLBLIND,
-            dict(player_id = previous_player.id,
-                 turn_stake = previous_player.turn_stake[0]
-            )
+            player_id = previous_player.id,
+            turn_stake = previous_player.turn_stake[0]
         )
 
         self.addToPot(self.current_player, self.big_blind)
         
         self.publicOut(
             PublicOutId.BIGBLIND,
-            dict(player_id = self.current_player.id,
-                 turn_stake = self.current_player.turn_stake[0]
-            )
+            player_id = self.current_player.id,
+            turn_stake = self.current_player.turn_stake[0]
         )
 
     def dealPrematureWinnings(self):
@@ -161,24 +156,70 @@ class Round:
         winner.money += won
 
         self.publicOut(
-            PublicOutId.DECLAREUNFINISHEDWINNER,
-            dict(player_id = winner.id,
-                 won = won,
-            )
+            PublicOutId.DECLAREPREMATUREWINNER,
+            player_id = winner.id,
+            won = won,
         )
 
     def dealWinnings(self):
-        cls = type(self.players)
-        
-        all_in_sorted = sorted(
-            cls([player for player in self.players if player.is_all_in]),
-            key = lambda player: sum(player.turn_stake)
-        )
+        stake_sorted = type(self.players)(add(
+            sorted(
+                [player for player in self.players if player.is_all_in],
+                key = lambda player: player.stake
+            ),
+            sorted(
+                [player for player in self.players if player.is_active],
+                key = lambda player: player.stake
+            )
+        ))
 
-        active_sorted = cls(
-            [player for player in self.players if player.is_active]
-        )
-        
+        for competitor in stake_sorted:
+            self.publicOut(
+                PublicOutId.PUBLICCARDSHOW,
+                player_id = competitor.id
+            )
+
+        grouped_indexes = [0]
+        for i in range(1, len(stake_sorted)):
+            if stake_sorted[i - 1].stake < stake_sorted[i].stake:
+                grouped_indexes.append(i)
+
+        for i in grouped_indexes:
+            subgame_competitors = stake_sorted[i:]
+            subgame_stake = subgame_competitors[0].stake
+
+            hands = [p.hand for p in subgame_competitors]
+            hands = HandParserGroup(hands)
+            kickers = hands.getGroupKickers()
+            
+            winning_players = subgame_competitors.winners()
+            nsplit = len(winning_players)
+            
+            take_from = []
+            for player in self.players:
+                if 0 < player.stake <= subgame_stake:
+                    take_from.append(player.stake / nsplit)
+                elif 0 < subgame_stake <= player.stake:
+                    take_from.append(subgame_stake / nsplit)
+                else: take_from.append(0)
+            
+            for win_split in winning_players:
+                win_took = 0
+                
+                for player, take in zip(self.players, take_from):
+                    win_took += take
+                    player.stake -= take
+
+                if round(win_took):
+                    win_split.money += round(win_took)
+
+                    self.publicOut(
+                        PublicOutId.DECLAREFINISHEDWINNER,
+                        winner_id = win_split.id,
+                        won = round(win_took),
+                        kicker = kickers
+                    )
+                        
 
     def processAction(self, action, raise_by=0):
         current_player = self.current_player
@@ -190,35 +231,32 @@ class Round:
             self.current_player.is_folded = True
 
             self.publicOut(
-                PublicOutId.PLAYERFOLDED,
-                dict(player_id = current_player.id)
+                PublicOutId.PLAYERFOLD,
+                player_id = current_player.id
             )
 
         elif action == PlayerAction.CHECK:
-            
             self.publicOut(
-                PublicOutId.PLAYERCHECKED,
-                dict(player_id = current_player)
+                PublicOutId.PLAYERCHECK,
+                player_id = current_player
             )
             
         elif action == PlayerAction.CALL:
             self.addToPot(current_player, to_call)
 
             self.publicOut(
-                PublicOutId.PLAYERCALLED,
-                dict(player_id = current_player.id,
-                     called = to_call
-                )
+                PublicOutId.PLAYERCALL,
+                player_id = current_player.id,
+                called = to_call
             )
 
         elif action == PlayerAction.RAISE:
             self.addToPot(current_player, turn_stake + raise_by)
 
             self.publicOut(
-                PublicOutId.PLAYERRAISED,
-                dict(player_id = current_player,
-                     raised_by = raise_by
-                )
+                PublicOutId.PLAYERRAISE,
+                player_id = current_player,
+                raised_by = raise_by
             )
 
         elif action == PlayerAction.ALLIN:
@@ -249,8 +287,7 @@ class Round:
                 self.dealWinnings()
                 return self.close()
             else:
-                i = self.players.previousActivePlayer(self.button)
-                self.current_index = i
+                self.current_index = self.button
                 next(self.turn_generator)
 
         self.shiftCurrentPlayer()
@@ -258,10 +295,13 @@ class Round:
 
         self.publicOut(
             PublicOutId.PLAYERAMOUNTTOCALL,
-            dict(player_id = self.current_player.id,
-                 to_call = self.turn_stake - called
-            )
+            player_id = self.current_player.id,
+            to_call = self.turn_stake - called
         )
+
+
+    def close(self):
+        return
 
         
     def privateOut(self, user_id, out_id, **kwargs):
